@@ -9,6 +9,7 @@ import os
 import requests
 import streamlit as st
 import plotly.graph_objects as go
+from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -261,37 +262,389 @@ st.markdown("""
 
 
 # --------------------------------------------------------------------------
-# API HELPERS
+# API HELPERS (WITH DEMO MODE FALLBACK)
 # --------------------------------------------------------------------------
+# Persist mock state in Streamlit session state for offline demo use
+if "mock_leads" not in st.session_state:
+    st.session_state.mock_leads = [
+        {
+            "lead_id": 1,
+            "company_name": "Acme Cloud Corp",
+            "contact_name": "Alice Vance",
+            "contact_email": "alice@acme.com",
+            "title": "VP Engineering",
+            "industry": "Cloud Computing",
+            "company_size": "250-500 employees",
+            "annual_revenue": "$45M - $60M",
+            "location": "San Francisco, CA",
+            "tech_stack": ["AWS", "Kubernetes", "PostgreSQL", "Python"],
+            "lead_status": "Qualified",
+            "segment": "Enterprise",
+            "created_at": "2026-07-11T12:00:00Z"
+        },
+        {
+            "lead_id": 2,
+            "company_name": "Nova Tech Systems",
+            "contact_name": "Bob Chen",
+            "contact_email": "bob@novatech.io",
+            "title": "Director of DevOps",
+            "industry": "Artificial Intelligence",
+            "company_size": "50-100 employees",
+            "annual_revenue": "$8M - $12M",
+            "location": "Boston, MA",
+            "tech_stack": ["GCP", "Docker", "Node.js", "Kafka"],
+            "lead_status": "New",
+            "segment": "Mid-Market",
+            "created_at": "2026-07-11T12:00:00Z"
+        },
+        {
+            "lead_id": 3,
+            "company_name": "Alpha Stream Inc",
+            "contact_name": "Sarah Miller",
+            "contact_email": "sarah@alphastream.com",
+            "title": "CTO",
+            "industry": "FinTech",
+            "company_size": "10-25 employees",
+            "annual_revenue": "$1M - $3M",
+            "location": "Austin, TX",
+            "tech_stack": ["AWS", "Python", "React", "Terraform"],
+            "lead_status": "Contacted",
+            "segment": "Startup",
+            "created_at": "2026-07-11T12:00:00Z"
+        }
+    ]
+
+if "mock_scores" not in st.session_state:
+    st.session_state.mock_scores = {
+        1: {
+            "score_id": 1,
+            "lead_id": 1,
+            "demographic_score": 42,
+            "behavioral_score": 38,
+            "total_score": 80,
+            "recommended_strategy": "Direct Outbound CTO Demo",
+            "engagement_playbook": [
+                "1. Send custom pricing case study for 40 seats.",
+                "2. Schedule 15-minute product security briefing.",
+                "3. Share database load test report."
+            ],
+            "calculated_at": "2026-07-11T18:00:00Z"
+        },
+        2: {
+            "score_id": 2,
+            "lead_id": 2,
+            "demographic_score": 30,
+            "behavioral_score": 10,
+            "total_score": 40,
+            "recommended_strategy": "Nurture with Tech Blogs",
+            "engagement_playbook": [
+                "1. Send dev newsletter on Docker setups.",
+                "2. Connect on LinkedIn with Bob."
+            ],
+            "calculated_at": "2026-07-11T18:00:00Z"
+        },
+        3: {
+            "score_id": 3,
+            "lead_id": 3,
+            "demographic_score": 15,
+            "behavioral_score": 8,
+            "total_score": 23,
+            "recommended_strategy": "Long-Term Nurture",
+            "engagement_playbook": [
+                "1. Add to monthly newsletter.",
+                "2. Reach out in 3 months."
+            ],
+            "calculated_at": "2026-07-11T18:00:00Z"
+        }
+    }
+
+if "mock_interactions" not in st.session_state:
+    st.session_state.mock_interactions = {
+        1: [
+            {
+                "interaction_id": 1,
+                "lead_id": 1,
+                "interaction_type": "Meeting",
+                "summary": "- Discussed custom API integrations and tech stack support.\n- Client expressed security compliance concerns.",
+                "action_items": "Sentiment: Positive\n\n- Send SOC2 compliance reports.\n- Setup sandbox database test environment.",
+                "interaction_date": "2026-07-11T10:00:00Z"
+            }
+        ],
+        2: [],
+        3: []
+    }
+
+class MockResponse:
+    def __init__(self, data, status_code=200, text=""):
+        self._data = data
+        self.status_code = status_code
+        self.text = text
+    def json(self):
+        return self._data
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.exceptions.HTTPError(f"HTTP {self.status_code}")
+
+def mock_api_call(method: str, path: str, **kwargs) -> MockResponse:
+    clean_path = path.split("?")[0]
+    
+    if clean_path == "/leads" and method == "GET":
+        q = kwargs.get("params", {}).get("q")
+        if q:
+            filtered = [l for l in st.session_state.mock_leads if q.lower() in l["company_name"].lower() or q.lower() in (l.get("contact_name") or "").lower() or q.lower() in (l.get("industry") or "").lower()]
+            return MockResponse(filtered)
+        return MockResponse(st.session_state.mock_leads)
+
+    if clean_path.startswith("/leads/") and method == "GET":
+        try:
+            lid = int(clean_path.split("/")[-1])
+            lead = next((l for l in st.session_state.mock_leads if l["lead_id"] == lid), None)
+            if lead:
+                return MockResponse(lead)
+            return MockResponse({"detail": "Lead not found"}, 404)
+        except Exception:
+            pass
+
+    if clean_path == "/leads" and method == "POST":
+        data = kwargs.get("json", {})
+        new_id = max([l["lead_id"] for l in st.session_state.mock_leads] or [0]) + 1
+        new_lead = {
+            "lead_id": new_id,
+            "company_name": data.get("company_name", "New Corp"),
+            "contact_name": data.get("contact_name"),
+            "contact_email": data.get("contact_email"),
+            "title": data.get("title"),
+            "industry": data.get("industry"),
+            "company_size": data.get("company_size"),
+            "annual_revenue": data.get("annual_revenue"),
+            "location": data.get("location"),
+            "tech_stack": data.get("tech_stack", []),
+            "lead_status": data.get("lead_status", "New"),
+            "segment": data.get("segment"),
+            "created_at": datetime.now().isoformat()
+        }
+        st.session_state.mock_leads.append(new_lead)
+        st.session_state.mock_interactions[new_id] = []
+        return MockResponse(new_lead)
+
+    if clean_path.startswith("/leads/") and method == "PUT":
+        try:
+            lid = int(clean_path.split("/")[-1])
+            data = kwargs.get("json", {})
+            lead = next((l for l in st.session_state.mock_leads if l["lead_id"] == lid), None)
+            if lead:
+                for k, v in data.items():
+                    lead[k] = v
+                return MockResponse(lead)
+            return MockResponse({"detail": "Lead not found"}, 404)
+        except Exception:
+            pass
+
+    if clean_path.startswith("/leads/") and method == "DELETE":
+        try:
+            lid = int(clean_path.split("/")[-1])
+            lead = next((l for l in st.session_state.mock_leads if l["lead_id"] == lid), None)
+            if lead:
+                st.session_state.mock_leads.remove(lead)
+                return MockResponse({"message": "Lead deleted"})
+            return MockResponse({"detail": "Lead not found"}, 404)
+        except Exception:
+            pass
+
+    if clean_path.startswith("/leads/interactions/") and method == "GET":
+        try:
+            lid = int(clean_path.split("/")[-1])
+            return MockResponse(st.session_state.mock_interactions.get(lid, []))
+        except Exception:
+            pass
+
+    if clean_path.startswith("/intelligence/analyze/") and method == "GET":
+        try:
+            lid = int(clean_path.split("/")[-1])
+            lead = next((l for l in st.session_state.mock_leads if l["lead_id"] == lid), None)
+            techs = ", ".join(lead["tech_stack"]) if lead and lead.get("tech_stack") else "standard packages"
+            return MockResponse({
+                "company_profile": f"{lead['company_name']} operates in {lead.get('industry') or 'Tech'} segment and employs {lead.get('company_size') or 'many'} personnel.",
+                "growth_indicators": f"Positive market indicator with revenue in the {lead.get('annual_revenue') or 'growth'} range.",
+                "pain_points": f"Scaling technical debt on {techs}.",
+                "key_opportunities": f"Migrate legacy modules to high-availability endpoints running {techs}.",
+                "buyer_personas": f"{lead.get('contact_name') or 'Lead Contact'} ({lead.get('title') or 'Manager'})."
+            })
+        except Exception:
+            pass
+
+    if clean_path == "/outreach/generate" and method == "POST":
+        data = kwargs.get("json", {})
+        lid = data.get("lead_id")
+        lead = next((l for l in st.session_state.mock_leads if l["lead_id"] == lid), None)
+        cname = lead["company_name"] if lead else "your company"
+        pname = lead["contact_name"] if lead else "there"
+        return MockResponse({
+            "subject": f"Synergizing infrastructure fit for {cname}",
+            "body": f"Hi {pname},\n\nI saw that {cname} is expanding its deployment of {', '.join(lead['tech_stack']) if lead and lead.get('tech_stack') else 'cloud tech'}.\n\nOur platform can help streamline operations. Are you open for a short call next week?\n\nBest,\nSalesGenie Agent"
+        })
+
+    if clean_path.startswith("/outreach/history/") and method == "GET":
+        return MockResponse([])
+
+    if clean_path == "/outreach/save" and method == "POST":
+        return MockResponse({"message": "Saved"})
+
+    if clean_path.startswith("/scoring/") and method == "GET":
+        try:
+            lid = int(clean_path.split("/")[-1])
+            score = st.session_state.mock_scores.get(lid)
+            if score:
+                return MockResponse(score)
+            return MockResponse({"detail": "No score"}, 404)
+        except Exception:
+            pass
+
+    if clean_path.startswith("/scoring/calculate/") and method == "POST":
+        try:
+            lid = int(clean_path.split("/")[-1])
+            lead = next((l for l in st.session_state.mock_leads if l["lead_id"] == lid), None)
+            if not lead:
+                return MockResponse({"detail": "Lead not found"}, 404)
+            demo = 35 if lead.get("segment") == "Enterprise" else 25 if lead.get("segment") == "Mid-Market" else 15
+            behav = 10 + len(st.session_state.mock_interactions.get(lid, [])) * 15
+            total = min(100, demo + behav)
+            score = {
+                "score_id": lid,
+                "lead_id": lid,
+                "demographic_score": min(50, demo),
+                "behavioral_score": min(50, behav),
+                "total_score": total,
+                "recommended_strategy": "Schedule Demo Call" if total >= 70 else "Nurture Campaign",
+                "engagement_playbook": [
+                    f"1. Connect with {lead.get('contact_name')} to introduce SalesGenie features.",
+                    f"2. Follow up with specific benefits for their {lead.get('company_size')} organization.",
+                    f"3. Send custom case study."
+                ],
+                "calculated_at": datetime.now().isoformat()
+            }
+            st.session_state.mock_scores[lid] = score
+            return MockResponse(score)
+        except Exception:
+            pass
+
+    if clean_path == "/conversation/summarize" and method == "POST":
+        data = kwargs.get("json", {})
+        lid = data.get("lead_id")
+        new_inter = {
+            "interaction_id": len(st.session_state.mock_interactions.get(lid, [])) + 1,
+            "lead_id": lid,
+            "interaction_type": "Meeting",
+            "summary": "- Analyzed transcription details.\n- Customer highlighted requirements.",
+            "action_items": "Sentiment: Positive\n\n- Send technical specifications.\n- Propose timeline.",
+            "interaction_date": datetime.now().isoformat()
+        }
+        if lid not in st.session_state.mock_interactions:
+            st.session_state.mock_interactions[lid] = []
+        st.session_state.mock_interactions[lid].append(new_inter)
+        if lid in st.session_state.mock_scores:
+            st.session_state.mock_scores[lid]["behavioral_score"] = min(50, st.session_state.mock_scores[lid]["behavioral_score"] + 15)
+            st.session_state.mock_scores[lid]["total_score"] = min(100, st.session_state.mock_scores[lid]["demographic_score"] + st.session_state.mock_scores[lid]["behavioral_score"])
+        return MockResponse({
+            "interaction_id": new_inter["interaction_id"],
+            "lead_id": lid,
+            "interaction_type": "Meeting",
+            "summary": new_inter["summary"],
+            "action_items": new_inter["action_items"],
+            "sentiment": "Positive",
+            "interaction_date": new_inter["interaction_date"]
+        })
+
+    if clean_path.startswith("/conversation/sync-crm/") and method == "POST":
+        try:
+            lid = int(clean_path.split("/")[-1])
+            lead = next((l for l in st.session_state.mock_leads if l["lead_id"] == lid), None)
+            return MockResponse({
+                "lead_id": lid,
+                "crm_provider": kwargs.get("params", {}).get("provider", "HubSpot"),
+                "sync_status": "SUCCESS",
+                "synced_at": datetime.now().isoformat(),
+                "payload_sent": {
+                    "crm_contact": {
+                        "email": lead.get("contact_email") if lead else "",
+                        "company": lead.get("company_name") if lead else "",
+                        "pipeline_stage": lead.get("lead_status") if lead else ""
+                    }
+                }
+            })
+        except Exception:
+            pass
+
+    if clean_path == "/dashboard/metrics" and method == "GET":
+        total = len(st.session_state.mock_leads)
+        segs = {}
+        stages = {}
+        for l in st.session_state.mock_leads:
+            seg = l.get("segment") or "Unsegmented"
+            segs[seg] = segs.get(seg, 0) + 1
+            stage = l.get("lead_status") or "New"
+            stages[stage] = stages.get(stage, 0) + 1
+        
+        scores = [s["total_score"] for s in st.session_state.mock_scores.values()]
+        avg_score = round(sum(scores) / len(scores), 1) if scores else 0.0
+        
+        top_prospects = []
+        for lid, score in st.session_state.mock_scores.items():
+            lead = next((l for l in st.session_state.mock_leads if l["lead_id"] == lid), None)
+            if lead:
+                top_prospects.append({
+                    "lead_id": lid,
+                    "company_name": lead["company_name"],
+                    "contact_name": lead.get("contact_name"),
+                    "segment": lead.get("segment"),
+                    "score": score["total_score"],
+                    "strategy": score["recommended_strategy"]
+                })
+        top_prospects = sorted(top_prospects, key=lambda x: x["score"], reverse=True)[:5]
+        
+        return MockResponse({
+            "total_leads": total,
+            "segment_metrics": segs,
+            "stage_metrics": stages,
+            "average_lead_score": avg_score,
+            "top_prospects": top_prospects
+        })
+
+    return MockResponse({"detail": "Not found"}, 404)
+
 def backend_alive() -> bool:
     try:
-        r = requests.get(f"{FASTAPI_URL}/", timeout=2)
+        r = requests.get(f"{FASTAPI_URL}/", timeout=1)
         return r.status_code == 200
     except requests.exceptions.RequestException:
         return False
 
-
 def api_get(path, **kwargs):
+    if not backend_alive():
+        return mock_api_call("GET", path, **kwargs)
     return requests.get(f"{FASTAPI_URL}{path}", timeout=kwargs.pop("timeout", 10), **kwargs)
 
-
 def api_post(path, **kwargs):
+    if not backend_alive():
+        return mock_api_call("POST", path, **kwargs)
     return requests.post(f"{FASTAPI_URL}{path}", timeout=kwargs.pop("timeout", 30), **kwargs)
 
-
 def api_put(path, **kwargs):
+    if not backend_alive():
+        return mock_api_call("PUT", path, **kwargs)
     return requests.put(f"{FASTAPI_URL}{path}", timeout=kwargs.pop("timeout", 10), **kwargs)
 
-
 def api_delete(path, **kwargs):
+    if not backend_alive():
+        return mock_api_call("DELETE", path, **kwargs)
     return requests.delete(f"{FASTAPI_URL}{path}", timeout=kwargs.pop("timeout", 10), **kwargs)
-
 
 def safe_json(resp):
     try:
         return resp.json()
     except ValueError:
         return {"detail": resp.text.strip() or f"Empty response (HTTP {resp.status_code})"}
+
 
 
 def score_gauge(total_score: int):
@@ -366,14 +719,14 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
-if not backend_alive():
-    st.markdown(
-        '<div class="sg-error-box">Unable to connect to the FastAPI backend. '
-        f'Make sure it is running at <b>{FASTAPI_URL}</b> '
-        '(<code>uvicorn main:app --reload --port 8000</code> or run <code>python run_all.py</code>).</div>',
-        unsafe_allow_html=True,
-    )
-    st.stop()
+    # Show Demo Mode indicator in sidebar if backend is offline
+    if not backend_alive():
+        st.markdown(
+            '<div style="background-color: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.35); color: #f59e0b; padding: 10px 14px; border-radius: 8px; font-size: 12px; margin-bottom: 20px; font-weight: 500;">'
+            '⚠️ Demo Mode (FastAPI Offline)</div>',
+            unsafe_allow_html=True
+        )
+
 
 
 # --------------------------------------------------------------------------
