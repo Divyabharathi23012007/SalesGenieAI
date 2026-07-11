@@ -6,14 +6,14 @@ SalesGenie AI automates lead analysis, prospect research, and AI-generated compa
 
 ## Implementation
 
-| Module | Status | Description |
-|---|---|---|
-| 1 — Lead Management & Prospect Database | Create, view, update, delete leads. Track lead lifecycle stage. |
-| 2 — Lead Intelligence & Company Analysis | AI-generated business needs, opportunities, industry analysis, and qualification score per lead (via Groq). |
-| 3 — AI Outreach Generation | Personalized cold email generation. |
-| 4 — Lead Scoring & Recommendation Engine | Conversion likelihood prediction, next-best-action. |
-| 5 — Conversation Intelligence & CRM Integration | Sales interaction logging is built; CRM sync and call summarization not started. |
-| 6 — Dashboard & Sales Analytics |  Basic lead metrics dashboard built; full pipeline/revenue analytics not started. |
+| Module | Description |
+|---|---|
+| 1 — Lead Management & Prospect Database | Create, view, update, delete leads. Track lead lifecycle stage. 
+| 2 — Lead Intelligence & Company Analysis | AI-generated business needs, opportunities, industry analysis, and qualification score per lead (via Groq). 
+| 3 — AI Outreach Generation | Personalized cold email generation. 
+| 4 — Lead Scoring & Recommendation Engine | Conversion likelihood prediction, next-best-action. 
+| 5 — Conversation Intelligence & CRM Integration | Sales interaction logging is built; CRM sync and call summarization not started. 
+| 6 — Dashboard & Sales Analytics |  Basic lead metrics dashboard built; full pipeline/revenue analytics not started. 
 
 ## Tech stack
 
