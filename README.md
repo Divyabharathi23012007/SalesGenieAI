@@ -72,7 +72,7 @@ GROQ_API_KEY=your_groq_api_key   # free at console.groq.com/keys
 ```
 
 > ⚠️ Never commit your real `.env` file. Each teammate uses their own local
-> database and keys. `.env` is already in `.gitignore`.
+> database and keys. 
 
 ### 4. Run it
 Two terminals, both from the project root:
