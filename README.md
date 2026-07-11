@@ -111,7 +111,7 @@ Module 1 and Module 2
 |---|---|
 | _Gilagalla Karthik_ | Module 1 — Lead Management |
 | _Guna Shekar Naidu Khandapu_ | Module 2 — Lead Intelligence 
-| _ _ | Module 3 — AI Outreach Generation |
+| _Gopika Rajendiran_ | Module 3 — AI Outreach Generation |
 | _Jagadeesh_ | Module 4 — Lead Scoring & Recommendation Engine |
 | _Divya Bharathi I_ | Module 5 — Conversation Intelligence & CRM Integration |
 | _Gopika Rajendiran_ | Module 6 — Dashboard & Sales Analytics |
