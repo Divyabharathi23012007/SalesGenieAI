@@ -8,3 +8,4 @@ pydantic>=2.7
 requests>=2.32
 openai>=1.35
 plotly>=5.22
+pandas>=2.0

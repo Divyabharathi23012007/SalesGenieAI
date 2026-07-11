@@ -51,6 +51,7 @@ class Lead(Base):
 
     insights = relationship("CompanyInsight", back_populates="lead")
     campaigns = relationship("OutreachCampaign", back_populates="lead")
+    scores = relationship("LeadScore", back_populates="lead")
 
 
 class CompanyInsight(Base):
@@ -87,6 +88,21 @@ class OutreachCampaign(Base):
     created_at = Column(TIMESTAMP, server_default=func.now())
 
     lead = relationship("Lead", back_populates="campaigns")
+
+
+class LeadScore(Base):
+    __tablename__ = "lead_scores"
+
+    score_id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.lead_id", ondelete="CASCADE"))
+    demographic_score = Column(Integer, default=0)
+    behavioral_score = Column(Integer, default=0)
+    total_score = Column(Integer, default=0)
+    recommended_strategy = Column(String(255))
+    engagement_playbook = Column(JSONB)  # List of dicts or strings representing action items
+    calculated_at = Column(TIMESTAMP, server_default=func.now())
+
+    lead = relationship("Lead", back_populates="scores")
 
 
 class SalesInteraction(Base):

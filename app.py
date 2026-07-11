@@ -97,6 +97,37 @@ def safe_json(resp):
     except ValueError:
         return {"detail": resp.text.strip() or f"Empty response (HTTP {resp.status_code})"}
 
+
+def score_gauge(total_score: int):
+    """Returns a Plotly gauge indicator for the given total score (0-100)."""
+    color = "#10b981" if total_score >= 70 else "#f59e0b" if total_score >= 40 else "#ef4444"
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=total_score,
+        number={"suffix": "/100", "font": {"size": 28, "color": "#f5f5f5"}},
+        gauge={
+            "axis": {"range": [0, 100], "tickcolor": "#9ca3af", "tickfont": {"color": "#9ca3af"}},
+            "bar": {"color": color},
+            "bgcolor": "#1f2937",
+            "bordercolor": "#374151",
+            "steps": [
+                {"range": [0, 40], "color": "#1f2937"},
+                {"range": [40, 70], "color": "#1f2937"},
+                {"range": [70, 100], "color": "#1f2937"},
+            ],
+            "threshold": {"line": {"color": color, "width": 3}, "thickness": 0.75, "value": total_score},
+        },
+        title={"text": "Prospect Fit Score", "font": {"size": 16, "color": "#9ca3af"}},
+    ))
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#f5f5f5"),
+        margin=dict(t=40, b=10, l=20, r=20),
+        height=230,
+    )
+    return fig
+
+
 def fetch_leads(q: str = None):
     params = {"q": q} if q else {}
     resp = api_get("/leads", params=params)
@@ -131,6 +162,7 @@ with st.sidebar:
             "Lead Management",
             "Add Lead",
             "Lead Intelligence",
+            "Lead Scoring",
             "AI Outreach",
             "Sales Interactions",
         ],
@@ -526,6 +558,274 @@ def _save_campaign(lead_id, email_type, tone, subject, body, status):
 
 
 # --------------------------------------------------------------------------
+# MODULE 4 — LEAD SCORING UI
+# --------------------------------------------------------------------------
+def render_lead_scoring():
+    st.markdown('<div class="sg-page-title">Lead Scoring & Playbooks</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sg-page-subtitle">Calculate prospect fit scores and AI engagement playbooks.</div>', unsafe_allow_html=True)
+
+    try:
+        leads = fetch_leads()
+    except Exception as e:
+        st.error(f"Could not load leads: {e}")
+        return
+    if not leads:
+        st.info("No leads yet. Add one from the 'Add Lead' page first.")
+        return
+
+    label_to_lead = {lead_label(l): l for l in leads}
+    selected_label = st.selectbox("Select a lead to score", list(label_to_lead.keys()))
+    lead = label_to_lead[selected_label]
+
+    col_details, col_score = st.columns([1, 1])
+
+    with col_details:
+        st.markdown('<div class="sg-card">', unsafe_allow_html=True)
+        st.markdown(f"### {lead['company_name']}")
+        st.caption(f"{lead.get('industry') or 'Unknown industry'} · {lead.get('segment') or 'Unsegmented'}")
+        st.write(f"**Company Size:** {lead.get('company_size') or '—'}")
+        st.write(f"**Annual Revenue:** {lead.get('annual_revenue') or '—'}")
+        st.write(f"**Location:** {lead.get('location') or '—'}")
+        if lead.get("tech_stack"):
+            st.write("**Tech Stack:** " + ", ".join(lead["tech_stack"]))
+        st.write(f"**Pipeline Stage:** {lead.get('lead_status') or '—'}")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col_score:
+        st.markdown('<span class="sg-badge">QUALIFICATION ENGINE</span>', unsafe_allow_html=True)
+        st.write("")
+
+        try:
+            score_resp = api_get(f"/scoring/{lead['lead_id']}")
+            score_data = score_resp.json() if score_resp.status_code == 200 else None
+        except Exception:
+            score_data = None
+
+        btn_label = "🔄 Recalculate Fit Score" if score_data else "✨ Compute Fit Score"
+        if st.button(btn_label, type="primary"):
+            with st.spinner("Calculating lead score..."):
+                gen_resp = api_post(f"/scoring/calculate/{lead['lead_id']}")
+                if gen_resp.status_code == 200:
+                    score_data = gen_resp.json()
+                    st.rerun()
+                else:
+                    st.error(f"Scoring failed: {gen_resp.text}")
+
+        if score_data:
+            st.plotly_chart(score_gauge(score_data["total_score"]), use_container_width=True)
+            st.markdown(f"**Strategy Recommendation**: `{score_data['recommended_strategy']}`")
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                st.metric("Demographic Fit Score", f"{score_data['demographic_score']}/50")
+                st.progress(score_data['demographic_score'] / 50.0)
+            with c2:
+                st.metric("Behavioral Engagement Score", f"{score_data['behavioral_score']}/50")
+                st.progress(score_data['behavioral_score'] / 50.0)
+
+            if score_data.get("engagement_playbook"):
+                st.markdown("---")
+                st.markdown("**AI Engagement Playbook**")
+                for step in score_data["engagement_playbook"]:
+                    st.write(step)
+        else:
+            st.caption("No scoring data calculated yet for this lead.")
+
+
+# --------------------------------------------------------------------------
+# MODULE 5 — CONVERSATION INTELLIGENCE & CRM SYNC UI
+# --------------------------------------------------------------------------
+def render_sales_interactions():
+    st.markdown('<div class="sg-page-title">Conversation Intelligence & CRM Sync</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sg-page-subtitle">Transcribe, summarize meetings, and synchronize leads with Salesforce & HubSpot.</div>', unsafe_allow_html=True)
+
+    try:
+        leads = fetch_leads()
+    except Exception as e:
+        st.error(f"Could not load leads: {e}")
+        return
+    if not leads:
+        st.info("No leads yet. Add one from the 'Add Lead' page first.")
+        return
+
+    label_to_lead = {lead_label(l): l for l in leads}
+    selected_label = st.selectbox("Select target lead for logs & CRM sync", list(label_to_lead.keys()))
+    lead = label_to_lead[selected_label]
+
+    # Tabs for different operations
+    tab1, tab2, tab3 = st.tabs(["📝 Log & Summarize Call", "📜 Interaction History", "🔄 CRM Sync Gateway"])
+
+    with tab1:
+        st.markdown("### Paste Meeting/Call Transcript")
+        st.caption("Pasting raw meeting transcripts (Zoom/Teams exports) automatically extracts summaries, key action points, and customer sentiment.")
+        
+        sample_transcript = (
+            "Agent: Hi, this is Sarah from SalesGenie. Thanks for joining.\n"
+            "Client: Hi Sarah. We are currently looking for a B2B lead intelligence tool that supports custom API connections and tracks technology stacks. We run React and python on AWS.\n"
+            "Agent: That fits perfectly. We support fully custom integrations. How many seats are you looking to start with?\n"
+            "Client: We want to onboard about 40 users next month. But first we need a pricing quote and to see a copy of your SOC2 security report to check compatibility.\n"
+            "Agent: Absolutely, I will email you the custom pricing and the SOC2 document by Tuesday. Let's schedule a deep-dive product demo for next Friday at 10 AM.\n"
+            "Client: Perfect, that works for us. Thanks!"
+        )
+        
+        transcript_input = st.text_area(
+            "Call Transcript Details",
+            value=sample_transcript,
+            height=200,
+            help="Paste the transcription text here."
+        )
+
+        if st.button("✨ Summarize & Log Interaction", type="primary"):
+            with st.spinner("Extracting insights..."):
+                payload = {"lead_id": lead["lead_id"], "transcript": transcript_input}
+                resp = api_post("/conversation/summarize", json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    st.success("Successfully summarized call and logged to database!")
+                    
+                    # Display Extracted Summary
+                    st.markdown("#### Summary Details")
+                    st.write(data["summary"])
+                    
+                    st.markdown("#### Extracted Sentiment")
+                    sentiment = data["sentiment"]
+                    s_color = "green" if sentiment == "Positive" else "orange" if sentiment == "Neutral" else "red"
+                    st.markdown(f'<span style="background-color: {s_color}; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;">{sentiment}</span>', unsafe_allow_html=True)
+                    
+                    st.markdown("#### Action Items Checklist")
+                    st.write(data["action_items"])
+                else:
+                    st.error(f"Summarizer failed: {resp.text}")
+
+    with tab2:
+        st.markdown("### Past Interactions Log")
+        try:
+            interact_resp = api_get(f"/leads/interactions/{lead['lead_id']}")
+            interactions = interact_resp.json() if interact_resp.status_code == 200 else []
+        except Exception:
+            interactions = []
+
+        if not interactions:
+            st.caption("No interactions logged for this lead yet.")
+        else:
+            for idx, inter in enumerate(interactions):
+                idate = inter.get("interaction_date", "")[:10]
+                with st.expander(f"📞 Meeting/Call on {idate} — Lead ID {inter['lead_id']}"):
+                    st.markdown("**Summary**")
+                    st.write(inter.get("summary"))
+                    st.markdown("**Action Items / Notes**")
+                    st.write(inter.get("action_items"))
+
+    with tab3:
+        st.markdown("### CRM Synchronization Gateway")
+        st.caption("Push lead demographics, enrichment parameters, and recent AI logs to HubSpot/Salesforce.")
+        
+        provider = st.selectbox("CRM Provider Target", ["HubSpot", "Salesforce", "Microsoft Dynamics"])
+        
+        if st.button(f"Sync lead to {provider}", type="primary"):
+            with st.spinner(f"Initiating handshake with {provider} APIs..."):
+                resp = api_post(f"/conversation/sync-crm/{lead['lead_id']}?provider={provider}")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    st.markdown('<div class="sg-success-box">Lead synchronisation completed successfully.</div>', unsafe_allow_html=True)
+                    st.write(f"**Synchronised at:** {data['synced_at']}")
+                    st.write(f"**Sync Status:** `{data['sync_status']}`")
+                    st.json(data["payload_sent"])
+                else:
+                    st.error(f"Sync failed: {resp.text}")
+
+
+# --------------------------------------------------------------------------
+# MODULE 6 — DASHBOARD UI
+# --------------------------------------------------------------------------
+def render_dashboard():
+    st.markdown('<div class="sg-page-title">Executive Pipeline Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sg-page-subtitle">Real-time overview of qualification metrics, segments, and pipeline stages.</div>', unsafe_allow_html=True)
+
+    try:
+        resp = api_get("/dashboard/metrics")
+        if resp.status_code != 200:
+            st.error("Failed to load dashboard metrics from backend API.")
+            return
+        metrics = resp.json()
+    except Exception as e:
+        st.error(f"Backend offline or connection error: {e}")
+        return
+
+    # 1. KPI Metrics
+    kpi1, kpi2, kpi3 = st.columns(3)
+    with kpi1:
+        st.metric("Total Active Prospects", metrics["total_leads"])
+    with kpi2:
+        st.metric("Avg. Qualification Score", f"{metrics['average_lead_score']}/100")
+    with kpi3:
+        segments = metrics["segment_metrics"]
+        top_seg = max(segments, key=segments.get) if segments else "N/A"
+        st.metric("Dominant Segment", top_seg)
+
+    st.write("")
+
+    # 2. Charts
+    col_chart1, col_chart2 = st.columns(2)
+    
+    with col_chart1:
+        st.markdown("### Segment Distribution")
+        seg_data = metrics["segment_metrics"]
+        if not seg_data:
+            st.caption("No segment data available.")
+        else:
+            fig_pie = go.Figure(data=[go.Pie(
+                labels=list(seg_data.keys()),
+                values=list(seg_data.values()),
+                hole=0.4,
+                marker=dict(colors=["#6366f1", "#10b981", "#f59e0b", "#ec4899"])
+            )])
+            fig_pie.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#f5f5f5"),
+                showlegend=True,
+                margin=dict(t=10, b=10, l=10, r=10),
+                height=250
+            )
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+    with col_chart2:
+        st.markdown("### Pipeline Stages")
+        stage_data = metrics["stage_metrics"]
+        if not stage_data:
+            st.caption("No pipeline stage data available.")
+        else:
+            fig_bar = go.Figure(data=[go.Bar(
+                x=list(stage_data.keys()),
+                y=list(stage_data.values()),
+                marker_color="#6366f1"
+            )])
+            fig_bar.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#f5f5f5"),
+                margin=dict(t=10, b=10, l=10, r=10),
+                height=250,
+                xaxis=dict(gridcolor="#374151"),
+                yaxis=dict(gridcolor="#374151")
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+    # 3. Top Prospects Table
+    st.markdown("### Top Scored Prospects")
+    top_prospects = metrics["top_prospects"]
+    if not top_prospects:
+        st.caption("No lead scores calculated yet. Go to 'Lead Scoring' to calculate scores.")
+    else:
+        import pandas as pd
+        df = pd.DataFrame(top_prospects)
+        # Clean columns for display
+        df.columns = ["Lead ID", "Company Name", "Contact Name", "Segment", "Fit Score", "Recommended Strategy"]
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+
+# --------------------------------------------------------------------------
 # PLACEHOLDER PAGES (Milestones 2-4, not built yet)
 # --------------------------------------------------------------------------
 def render_placeholder(title: str, note: str):
@@ -543,9 +843,14 @@ elif page == "Add Lead":
     render_add_lead()
 elif page == "Lead Intelligence":
     render_lead_intelligence()
+elif page == "Lead Scoring":
+    render_lead_scoring()
 elif page == "AI Outreach":
     render_outreach()
 elif page == "Dashboard":
-    render_placeholder("Dashboard", "Sales analytics dashboard — built in Milestone 4 (Module 6).")
+    render_dashboard()
 elif page == "Sales Interactions":
-    render_placeholder("Sales Interactions", "Conversation intelligence & CRM sync — built in Milestone 3 (Module 5).")
+    render_sales_interactions()
+
+
+
