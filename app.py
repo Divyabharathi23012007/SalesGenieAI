@@ -15,51 +15,247 @@ load_dotenv()
 
 FASTAPI_URL = os.getenv("FASTAPI_URL", "http://127.0.0.1:8000")
 
-st.set_page_config(page_title="SalesGenie AI", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="SalesGenie AI — B2B Sales Intelligence",
+    page_icon="🧬",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 
 # --------------------------------------------------------------------------
 # DARK THEME STYLING (matches the reference screenshot)
 # --------------------------------------------------------------------------
 st.markdown("""
 <style>
-    body, .stApp { background-color: #0e1117; color: #e6e6e6; }
+    /* ── Google Fonts ── */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+    /* ── Global Reset ── */
+    html, body, .stApp {
+        font-family: 'Inter', sans-serif;
+        background-color: #060b14;
+        color: #e2e8f0;
+    }
+
+    /* ── Sidebar ── */
     section[data-testid="stSidebar"] {
-        background-color: #12141c;
-        border-right: 1px solid #262730;
+        background: linear-gradient(180deg, #0a0f1e 0%, #0d1321 100%);
+        border-right: 1px solid rgba(99,102,241,0.15);
     }
-    .sg-title { font-size: 28px; font-weight: 800; color: #38bdf8; margin-bottom: 0px; }
-    .sg-subtitle { font-size: 13px; color: #9ca3af; margin-top: 0px; margin-bottom: 24px; }
+    section[data-testid="stSidebar"] .block-container { padding-top: 1.5rem; }
+
+    /* ── Sidebar Brand ── */
+    .sg-title {
+        font-size: 22px;
+        font-weight: 800;
+        background: linear-gradient(135deg, #818cf8 0%, #38bdf8 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        letter-spacing: -0.5px;
+        margin-bottom: 2px;
+    }
+    .sg-subtitle {
+        font-size: 11px;
+        color: #475569;
+        font-weight: 500;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        margin-bottom: 24px;
+    }
     .sg-nav-header {
-        font-size: 12px; color: #6b7280; letter-spacing: 1px;
-        text-transform: uppercase; margin: 18px 0 6px 0;
-    }
-    .sg-page-title { font-size: 42px; font-weight: 800; color: #f5f5f5; margin-bottom: 4px; }
-    .sg-page-subtitle { font-size: 15px; color: #9ca3af; margin-bottom: 28px; }
-    .sg-error-box {
-        background-color: #3a1620; border: 1px solid #7f1d3a; color: #fca5a5;
-        padding: 16px 20px; border-radius: 8px; font-size: 15px;
-    }
-    .sg-success-box {
-        background-color: #10261c; border: 1px solid #16543a; color: #86efac;
-        padding: 14px 18px; border-radius: 8px; font-size: 14px;
-    }
-    .sg-card {
-        background-color: #161923; border: 1px solid #262730; border-radius: 10px;
-        padding: 20px; margin-bottom: 16px;
-    }
-    .sg-badge {
-        display: inline-block; background-color: #1e3a5f; color: #7dd3fc;
-        font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 12px;
-        letter-spacing: 0.5px;
-    }
-    .sg-factor { font-weight: 700; color: #f5f5f5; font-size: 14px; margin-bottom: 2px; }
-    .sg-factor-detail { color: #9ca3af; font-size: 13px; margin-bottom: 14px; }
-    div[data-testid="stRadio"] label { font-size: 15px; padding: 4px 0; }
-    .stButton>button {
-        background-color: #0ea5e9; color: white; border: none; border-radius: 6px;
+        font-size: 10px;
+        color: #334155;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin: 20px 0 8px 0;
         font-weight: 600;
     }
-    .stButton>button:hover { background-color: #0284c7; }
+
+    /* ── Radio nav items ── */
+    div[data-testid="stRadio"] label {
+        font-size: 14px;
+        font-weight: 500;
+        color: #94a3b8;
+        padding: 6px 0;
+        transition: color 0.2s;
+    }
+    div[data-testid="stRadio"] label:hover { color: #c7d2fe; }
+
+    /* ── Page Headings ── */
+    .sg-page-title {
+        font-size: 36px;
+        font-weight: 800;
+        color: #f1f5f9;
+        letter-spacing: -1px;
+        margin-bottom: 4px;
+        line-height: 1.1;
+    }
+    .sg-page-subtitle {
+        font-size: 14px;
+        color: #64748b;
+        font-weight: 400;
+        margin-bottom: 28px;
+        letter-spacing: 0.1px;
+    }
+
+    /* ── Glassmorphism Card ── */
+    .sg-card {
+        background: rgba(15, 23, 42, 0.85);
+        border: 1px solid rgba(99,102,241,0.18);
+        border-radius: 14px;
+        padding: 22px 24px;
+        margin-bottom: 16px;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+        transition: border-color 0.25s, box-shadow 0.25s;
+    }
+    .sg-card:hover {
+        border-color: rgba(99,102,241,0.38);
+        box-shadow: 0 6px 32px rgba(99,102,241,0.12);
+    }
+
+    /* ── Status / Alert Boxes ── */
+    .sg-error-box {
+        background: rgba(127,29,58,0.25);
+        border: 1px solid rgba(239,68,68,0.4);
+        color: #fca5a5;
+        padding: 14px 18px;
+        border-radius: 10px;
+        font-size: 14px;
+        font-weight: 500;
+    }
+    .sg-success-box {
+        background: rgba(16,84,60,0.25);
+        border: 1px solid rgba(34,197,94,0.35);
+        color: #86efac;
+        padding: 14px 18px;
+        border-radius: 10px;
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    /* ── Badges ── */
+    .sg-badge {
+        display: inline-block;
+        background: linear-gradient(135deg, rgba(99,102,241,0.25), rgba(56,189,248,0.15));
+        color: #a5b4fc;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 4px 12px;
+        border-radius: 20px;
+        letter-spacing: 1.2px;
+        text-transform: uppercase;
+        border: 1px solid rgba(99,102,241,0.3);
+    }
+
+    /* ── Factor Labels ── */
+    .sg-factor { font-weight: 700; color: #e2e8f0; font-size: 14px; margin-bottom: 2px; }
+    .sg-factor-detail { color: #64748b; font-size: 13px; margin-bottom: 14px; }
+
+    /* ── Buttons ── */
+    .stButton > button {
+        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+        color: #ffffff;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 14px;
+        padding: 10px 20px;
+        letter-spacing: 0.3px;
+        transition: transform 0.15s, box-shadow 0.15s;
+        box-shadow: 0 2px 12px rgba(99,102,241,0.35);
+    }
+    .stButton > button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(99,102,241,0.5);
+        background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
+    }
+    .stButton > button:active { transform: translateY(0px); }
+
+    /* ── Primary Button (type="primary") ── */
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #6366f1 0%, #7c3aed 100%);
+        box-shadow: 0 4px 16px rgba(109,40,217,0.4);
+    }
+
+    /* ── Input fields ── */
+    .stTextInput > div > div > input,
+    .stTextArea > div > div > textarea,
+    .stSelectbox > div > div {
+        background-color: #0f172a !important;
+        border: 1px solid rgba(99,102,241,0.2) !important;
+        border-radius: 8px !important;
+        color: #e2e8f0 !important;
+        font-family: 'Inter', sans-serif !important;
+    }
+    .stTextInput > div > div > input:focus,
+    .stTextArea > div > div > textarea:focus {
+        border-color: rgba(99,102,241,0.55) !important;
+        box-shadow: 0 0 0 3px rgba(99,102,241,0.12) !important;
+    }
+
+    /* ── Metrics ── */
+    div[data-testid="stMetric"] {
+        background: rgba(15,23,42,0.8);
+        border: 1px solid rgba(99,102,241,0.15);
+        border-radius: 12px;
+        padding: 16px 20px;
+    }
+    div[data-testid="stMetricValue"] {
+        font-size: 28px !important;
+        font-weight: 800 !important;
+        color: #a5b4fc !important;
+    }
+    div[data-testid="stMetricLabel"] { color: #64748b !important; font-size: 12px !important; font-weight: 600 !important; text-transform: uppercase; letter-spacing: 0.8px; }
+
+    /* ── Tabs ── */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 4px;
+        background: rgba(15,23,42,0.6);
+        padding: 4px;
+        border-radius: 10px;
+        border: 1px solid rgba(99,102,241,0.12);
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 7px;
+        font-weight: 600;
+        font-size: 13px;
+        color: #64748b;
+        padding: 8px 18px;
+    }
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #6366f1, #4f46e5) !important;
+        color: #ffffff !important;
+    }
+
+    /* ── Expander ── */
+    details summary {
+        background: rgba(15,23,42,0.7);
+        border: 1px solid rgba(99,102,241,0.15);
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-weight: 500;
+        color: #94a3b8;
+        cursor: pointer;
+    }
+    details[open] summary {
+        border-color: rgba(99,102,241,0.4);
+        color: #c7d2fe;
+    }
+
+    /* ── Dataframe ── */
+    .stDataFrame { border-radius: 10px; overflow: hidden; border: 1px solid rgba(99,102,241,0.15); }
+
+    /* ── Divider ── */
+    hr { border-color: rgba(99,102,241,0.12); margin: 20px 0; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #060b14; }
+    ::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.4); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0.7); }
 </style>
 """, unsafe_allow_html=True)
 
