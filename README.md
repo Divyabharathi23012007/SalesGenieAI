@@ -91,7 +91,7 @@ Opens the dashboard at `http://localhost:8501`.
 
 ## API endpoints
 
-# Module 1 and Module 2
+Module 1 and Module 2
 
 | Method | Endpoint | Description |
 |---|---|---|
