@@ -1,83 +1,41 @@
-"""Database connection and session management for SalesGenie AI."""
+"""
+database/connection.py
+Central PostgreSQL connection for the whole SalesGenie AI project.
+All modules (module1..module6) should import get_db / SessionLocal from here
+so everyone shares ONE connection pool instead of opening their own.
+"""
 
-from collections.abc import Generator
-from pathlib import Path
 import os
-
 from dotenv import load_dotenv
-from sqlalchemy import URL, create_engine
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
 
-# Load environment variables from the project root
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+load_dotenv()
 
-
-def get_required_setting(name: str) -> str:
-    """
-    Return a required environment variable value.
-
-    Args:
-        name: Environment variable name.
-
-    Returns:
-        The value of the environment variable.
-
-    Raises:
-        RuntimeError: If the environment variable is missing.
-    """
-    value = os.getenv(name)
-
-    if not value:
-        raise RuntimeError(
-            f"Missing required environment variable: {name}"
-        )
-
-    return value
-
-
-DATABASE_HOST: str = get_required_setting("DATABASE_HOST")
-DATABASE_PORT: int = int(get_required_setting("DATABASE_PORT"))
-DATABASE_NAME: str = get_required_setting("DATABASE_NAME")
-DATABASE_USER: str = get_required_setting("DATABASE_USER")
-DATABASE_PASSWORD: str = get_required_setting("DATABASE_PASSWORD")
-
-
-DATABASE_URL: URL = URL.create(
-    drivername="postgresql+psycopg2",
-    username=DATABASE_USER,
-    password=DATABASE_PASSWORD,
-    host=DATABASE_HOST,
-    port=DATABASE_PORT,
-    database=DATABASE_NAME,
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:postgres@localhost:5432/salesgenie",
 )
 
-# SQLAlchemy engine
-engine: Engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-)
-
-# Database session factory
-SessionLocal: sessionmaker[Session] = sessionmaker(
-    bind=engine,
-    autoflush=False,
-    autocommit=False,
-    expire_on_commit=False,
-)
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
 
-class Base(DeclarativeBase):
-    """Base class for all SQLAlchemy ORM models."""
-
-
-def get_db() -> Generator[Session, None, None]:
-    """
-    Provide a database session and close it safely after use.
-    """
-    db: Session = SessionLocal()
-
+def get_db():
+    """FastAPI dependency: yields a DB session and closes it after the request."""
+    db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+
+def init_db():
+    """
+    Creates all tables that don't exist yet.
+    Safe to call multiple times (idempotent) — existing tables are left untouched.
+    Import all models here so Base.metadata knows about them before create_all().
+    """
+    from database import models  # noqa: F401  (ensures models are registered)
+    Base.metadata.create_all(bind=engine)

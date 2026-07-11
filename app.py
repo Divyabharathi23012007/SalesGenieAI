@@ -1,894 +1,551 @@
-from __future__ import annotations
+"""
+app.py
+Streamlit frontend for SalesGenie AI — Modules 1, 2, and 3 fully wired up.
+Run with: streamlit run app.py --server.port 8502
+(or via run_all.py which starts backend + frontend together)
+"""
 
-from datetime import datetime, time, timezone
-from typing import Any
-
-import pandas as pd
+import os
 import requests
 import streamlit as st
+import plotly.graph_objects as go
+from dotenv import load_dotenv
 
-API_BASE_URL = "http://127.0.0.1:8000"
-REQUEST_TIMEOUT = 10
+load_dotenv()
 
-st.set_page_config(
-    page_title="SalesGenie AI",
-    page_icon="📊",
-    layout="wide",
-)
+FASTAPI_URL = os.getenv("FASTAPI_URL", "http://127.0.0.1:8000")
 
-st.markdown(
-    """
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg:        #0A0F1E;
-            --surface:   #131B2E;
-            --surface-2: #182339;
-            --border:    #253048;
-            --text:      #EEF2F8;
-            --text-dim:  #AAB4C8;
-            --text-mute: #7C88A0;
-            --cyan:      #2FD8E5;
-            --amber:     #F4B740;
-            --emerald:   #3ADC91;
-            --coral:     #FF6B7A;
-            --violet:    #9B8CFF;
-        }
+st.set_page_config(page_title="SalesGenie AI", layout="wide", initial_sidebar_state="expanded")
 
-        html, body, .stApp {
-            background-color: var(--bg) !important;
-            color: var(--text) !important;
-            font-family: 'Inter', sans-serif;
-        }
-
-        /* ---------- Typography ---------- */
-        h1, h2, h3, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
-            font-family: 'Sora', sans-serif !important;
-            color: var(--text) !important;
-            letter-spacing: -0.01em;
-        }
-
-        h1 { font-weight: 800 !important; }
-        h2, h3 { font-weight: 700 !important; }
-
-        p, span, label, div, li {
-            color: var(--text) !important;
-        }
-
-        .stCaption, [data-testid="stCaptionContainer"], small {
-            color: var(--text-dim) !important;
-        }
-
-        /* ---------- Sidebar ---------- */
-        [data-testid="stSidebar"] {
-            background-color: var(--surface) !important;
-            border-right: 1px solid var(--border);
-        }
-
-        [data-testid="stSidebar"] h1 {
-            font-size: 1.4rem !important;
-            background: linear-gradient(90deg, var(--cyan), var(--violet));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
-            color: var(--text-mute) !important;
-            margin-bottom: 1.2rem;
-        }
-
-        [data-testid="stSidebar"] label {
-            color: var(--text) !important;
-        }
-
-        /* Sidebar radio nav as pill list */
-        [data-testid="stSidebar"] [role="radiogroup"] label {
-            background-color: transparent;
-            border-radius: 8px;
-            padding: 8px 10px !important;
-            margin-bottom: 2px;
-            transition: background-color 0.15s ease;
-        }
-
-        [data-testid="stSidebar"] [role="radiogroup"] label:hover {
-            background-color: var(--surface-2);
-        }
-
-        /* ---------- Buttons ---------- */
-        .stButton button, .stFormSubmitButton button,
-        [data-testid="stButton"] button, [data-testid="stFormSubmitButton"] button,
-        button[kind="secondary"], button[kind="secondaryFormSubmit"],
-        button[kind="primary"], button[kind="primaryFormSubmit"],
-        button[data-testid^="baseButton"] {
-            background-color: var(--cyan) !important;
-            color: #08131A !important;
-            border: none !important;
-            border-radius: 8px !important;
-            font-weight: 600 !important;
-            font-family: 'Inter', sans-serif !important;
-            transition: transform 0.1s ease, box-shadow 0.15s ease;
-        }
-
-        .stButton button *, .stFormSubmitButton button *,
-        [data-testid="stButton"] button *, [data-testid="stFormSubmitButton"] button *,
-        button[kind="secondary"] *, button[kind="secondaryFormSubmit"] *,
-        button[kind="primary"] *, button[kind="primaryFormSubmit"] *,
-        button[data-testid^="baseButton"] * {
-            color: #08131A !important;
-        }
-
-        .stButton button:hover, .stFormSubmitButton button:hover,
-        [data-testid="stButton"] button:hover, [data-testid="stFormSubmitButton"] button:hover,
-        button[kind="secondary"]:hover, button[kind="primary"]:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 6px 16px rgba(47, 216, 229, 0.25);
-        }
-
-        /* ---------- Dropdown popovers (portaled outside .stApp) ---------- */
-        [data-baseweb="popover"], [data-baseweb="menu"],
-        ul[data-testid="stSelectboxVirtualDropdown"] {
-            background-color: var(--surface-2) !important;
-            border: 1px solid var(--border) !important;
-            border-radius: 8px !important;
-        }
-
-        [data-baseweb="menu"] li, [role="option"], [role="listbox"] * {
-            color: var(--text) !important;
-            background-color: transparent !important;
-        }
-
-        [data-baseweb="menu"] li:hover, [role="option"]:hover {
-            background-color: var(--surface) !important;
-        }
-
-        /* ---------- Inputs ---------- */
-        .stTextInput input, .stTextArea textarea, .stSelectbox [data-baseweb="select"] > div,
-        .stDateInput input, .stNumberInput input {
-            background-color: var(--surface-2) !important;
-            color: var(--text) !important;
-            border: 1px solid var(--border) !important;
-            border-radius: 8px !important;
-        }
-
-        .stTextInput input::placeholder, .stTextArea textarea::placeholder {
-            color: var(--text-mute) !important;
-        }
-
-        /* ---------- Dataframe ---------- */
-        [data-testid="stDataFrame"] {
-            border: 1px solid var(--border) !important;
-            border-radius: 12px !important;
-            overflow: hidden;
-        }
-
-        /* ---------- Alerts ---------- */
-        [data-testid="stAlert"] {
-            border-radius: 10px !important;
-            border: 1px solid var(--border) !important;
-        }
-
-        /* ---------- Expander ---------- */
-        [data-testid="stExpander"] {
-            background-color: var(--surface) !important;
-            border: 1px solid var(--border) !important;
-            border-radius: 10px !important;
-        }
-
-        /* ---------- Custom signature metric cards ---------- */
-        .sg-metric-row {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 16px;
-            margin-top: 8px;
-            margin-bottom: 24px;
-        }
-
-        .sg-metric-card {
-            background-color: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 18px 20px 16px 20px;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .sg-metric-card::before {
-            content: "";
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 3px;
-            background: var(--accent, var(--cyan));
-        }
-
-        .sg-metric-label {
-            font-family: 'Inter', sans-serif;
-            font-size: 0.78rem;
-            font-weight: 600;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-            color: var(--text-mute) !important;
-            margin-bottom: 6px;
-        }
-
-        .sg-metric-value {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 2.1rem;
-            font-weight: 700;
-            color: var(--text) !important;
-            line-height: 1;
-        }
-
-        /* ---------- Status badges ---------- */
-        .sg-badge {
-            display: inline-block;
-            font-family: 'Inter', sans-serif;
-            font-size: 0.75rem;
-            font-weight: 600;
-            padding: 3px 10px;
-            border-radius: 999px;
-            text-transform: capitalize;
-        }
-
-        /* ---------- Score readout (Lead Intelligence) ---------- */
-        .sg-score-wrap {
-            background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 24px 28px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 24px;
-        }
-
-        .sg-score-number {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 3rem;
-            font-weight: 700;
-            color: var(--amber) !important;
-            line-height: 1;
-        }
-
-        .sg-score-label {
-            font-family: 'Inter', sans-serif;
-            font-size: 0.85rem;
-            color: var(--text-dim) !important;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 4px;
-        }
-
-        .sg-insight-block {
-            background-color: var(--surface);
-            border: 1px solid var(--border);
-            border-left: 3px solid var(--accent, var(--cyan));
-            border-radius: 10px;
-            padding: 14px 18px;
-            margin-bottom: 12px;
-        }
-
-        .sg-insight-title {
-            font-family: 'Inter', sans-serif;
-            font-size: 0.78rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            color: var(--accent, var(--cyan)) !important;
-            margin-bottom: 6px;
-        }
-
-        .sg-insight-text {
-            color: var(--text) !important;
-            font-size: 0.95rem;
-            line-height: 1.5;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-def metric_card(label: str, value: int | str, accent: str = "cyan") -> str:
-    """Return HTML for a single signature metric card."""
-    return (
-        f'<div class="sg-metric-card" style="--accent: var(--{accent})">'
-        f'<div class="sg-metric-label">{label}</div>'
-        f'<div class="sg-metric-value">{value}</div>'
-        f"</div>"
-    )
-
-
-def status_badge(status: str) -> str:
-    """Return HTML for a colored status badge."""
-    palette = {
-        "new": ("#1E3A52", "#7DD3FC"),
-        "qualified": ("#173B2E", "#3ADC91"),
-        "proposal": ("#3A2E17", "#F4B740"),
-        "negotiation": ("#332146", "#C4A6FF"),
-        "closed_won": ("#123424", "#34D399"),
-        "closed_lost": ("#3A1B22", "#FF6B7A"),
+# --------------------------------------------------------------------------
+# DARK THEME STYLING (matches the reference screenshot)
+# --------------------------------------------------------------------------
+st.markdown("""
+<style>
+    body, .stApp { background-color: #0e1117; color: #e6e6e6; }
+    section[data-testid="stSidebar"] {
+        background-color: #12141c;
+        border-right: 1px solid #262730;
     }
-    bg, fg = palette.get(status.strip().lower(), ("#232D45", "#AAB4C8"))
-    return (
-        f'<span class="sg-badge" style="background-color:{bg}; color:{fg} !important;">'
-        f"{status}</span>"
-    )
+    .sg-title { font-size: 28px; font-weight: 800; color: #38bdf8; margin-bottom: 0px; }
+    .sg-subtitle { font-size: 13px; color: #9ca3af; margin-top: 0px; margin-bottom: 24px; }
+    .sg-nav-header {
+        font-size: 12px; color: #6b7280; letter-spacing: 1px;
+        text-transform: uppercase; margin: 18px 0 6px 0;
+    }
+    .sg-page-title { font-size: 42px; font-weight: 800; color: #f5f5f5; margin-bottom: 4px; }
+    .sg-page-subtitle { font-size: 15px; color: #9ca3af; margin-bottom: 28px; }
+    .sg-error-box {
+        background-color: #3a1620; border: 1px solid #7f1d3a; color: #fca5a5;
+        padding: 16px 20px; border-radius: 8px; font-size: 15px;
+    }
+    .sg-success-box {
+        background-color: #10261c; border: 1px solid #16543a; color: #86efac;
+        padding: 14px 18px; border-radius: 8px; font-size: 14px;
+    }
+    .sg-card {
+        background-color: #161923; border: 1px solid #262730; border-radius: 10px;
+        padding: 20px; margin-bottom: 16px;
+    }
+    .sg-badge {
+        display: inline-block; background-color: #1e3a5f; color: #7dd3fc;
+        font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 12px;
+        letter-spacing: 0.5px;
+    }
+    .sg-factor { font-weight: 700; color: #f5f5f5; font-size: 14px; margin-bottom: 2px; }
+    .sg-factor-detail { color: #9ca3af; font-size: 13px; margin-bottom: 14px; }
+    div[data-testid="stRadio"] label { font-size: 15px; padding: 4px 0; }
+    .stButton>button {
+        background-color: #0ea5e9; color: white; border: none; border-radius: 6px;
+        font-weight: 600;
+    }
+    .stButton>button:hover { background-color: #0284c7; }
+</style>
+""", unsafe_allow_html=True)
 
 
-
-
-def api_request(
-    method: str,
-    endpoint: str,
-    payload: dict[str, Any] | None = None,
-) -> tuple[Any | None, str | None]:
-    """Send a request to the FastAPI backend."""
+# --------------------------------------------------------------------------
+# API HELPERS
+# --------------------------------------------------------------------------
+def backend_alive() -> bool:
     try:
-        response = requests.request(
-            method=method,
-            url=f"{API_BASE_URL}{endpoint}",
-            json=payload,
-            timeout=REQUEST_TIMEOUT,
-        )
-    except requests.RequestException:
-        return None, "Unable to connect to the FastAPI backend."
+        r = requests.get(f"{FASTAPI_URL}/", timeout=2)
+        return r.status_code == 200
+    except requests.exceptions.RequestException:
+        return False
 
-    if response.status_code == 204:
-        return None, None
 
+def api_get(path, **kwargs):
+    return requests.get(f"{FASTAPI_URL}{path}", timeout=kwargs.pop("timeout", 10), **kwargs)
+
+
+def api_post(path, **kwargs):
+    return requests.post(f"{FASTAPI_URL}{path}", timeout=kwargs.pop("timeout", 30), **kwargs)
+
+
+def api_put(path, **kwargs):
+    return requests.put(f"{FASTAPI_URL}{path}", timeout=kwargs.pop("timeout", 10), **kwargs)
+
+
+def api_delete(path, **kwargs):
+    return requests.delete(f"{FASTAPI_URL}{path}", timeout=kwargs.pop("timeout", 10), **kwargs)
+
+
+def safe_json(resp):
     try:
-        response_data = response.json()
+        return resp.json()
     except ValueError:
-        response_data = None
+        return {"detail": resp.text.strip() or f"Empty response (HTTP {resp.status_code})"}
 
-    if response.ok:
-        return response_data, None
+def fetch_leads(q: str = None):
+    params = {"q": q} if q else {}
+    resp = api_get("/leads", params=params)
+    resp.raise_for_status()
+    return resp.json()
 
-    if isinstance(response_data, dict):
-        detail = response_data.get("detail")
-        if isinstance(detail, str):
-            return None, detail
 
-    return None, f"Request failed with status code {response.status_code}."
+def lead_label(l: dict) -> str:
+    seg = f" · {l['segment']}" if l.get("segment") else ""
+    return f"{l['company_name']} — {l.get('contact_name') or 'No contact'}{seg}"
 
 
-def get_leads() -> tuple[list[dict[str, Any]], str | None]:
-    """Retrieve all leads from the backend."""
-    data, error = api_request("GET", "/leads")
+TECH_STACK_OPTIONS = [
+    "AWS", "GCP", "Azure", "Python", "Java", "Go", "Node.js", "React",
+    "Kubernetes", "Docker", "PostgreSQL", "MongoDB", "Kafka", "TensorFlow", "Terraform",
+]
+SEGMENTS = ["Enterprise", "Mid-Market", "Startup"]
 
-    if error:
-        return [], error
 
-    if isinstance(data, list):
-        return data, None
-
-    return [], "The backend returned an invalid lead response."
-
-
-def get_interactions(
-    lead_id: int,
-) -> tuple[list[dict[str, Any]], str | None]:
-    """Retrieve all interactions for a lead."""
-    data, error = api_request("GET", f"/leads/{lead_id}/interactions")
-
-    if error:
-        return [], error
-
-    if isinstance(data, list):
-        return data, None
-
-    return [], "The backend returned an invalid interaction response."
-
-
-def get_insights(
-    lead_id: int,
-) -> tuple[list[dict[str, Any]], str | None]:
-    """Retrieve all AI-generated insights for a lead."""
-    data, error = api_request("GET", f"/leads/{lead_id}/insights")
-
-    if error:
-        # A 404 here just means "no insights yet" - not a real error
-        if error == "No insights found for this lead":
-            return [], None
-        return [], error
-
-    if isinstance(data, list):
-        return data, None
-
-    return [], "The backend returned an invalid insight response."
-
-
-def render_dashboard() -> None:
-    """Render the Module 1 lead management dashboard."""
-    st.title("Lead Management Dashboard")
-    st.caption("Module 1 · Lead Management & Prospect Database")
-
-    with st.spinner("Loading lead metrics..."):
-        leads, error = get_leads()
-
-        if error:
-            st.error(error)
-            return
-
-        total_interactions = 0
-        interaction_error: str | None = None
-
-        for lead in leads:
-            lead_id = lead.get("lead_id")
-
-            if not isinstance(lead_id, int):
-                continue
-
-            interactions, current_error = get_interactions(lead_id)
-
-            if current_error:
-                interaction_error = current_error
-                break
-
-            total_interactions += len(interactions)
-
-    new_leads = sum(
-        lead.get("lead_status", "").strip().lower() == "new"
-        for lead in leads
-    )
-    qualified_leads = sum(
-        lead.get("lead_status", "").strip().lower() == "qualified"
-        for lead in leads
-    )
-
-    st.markdown(
-        '<div class="sg-metric-row">'
-        + metric_card("Total Leads", len(leads), "cyan")
-        + metric_card("New Leads", new_leads, "violet")
-        + metric_card("Qualified Leads", qualified_leads, "emerald")
-        + metric_card("Total Interactions", total_interactions, "amber")
-        + "</div>",
-        unsafe_allow_html=True,
-    )
-
-    if interaction_error:
-        st.warning(
-            "Some interaction metrics could not be loaded. "
-            f"{interaction_error}"
-        )
-
-
-def render_lead_management() -> None:
-    """Render the lead listing, viewing, editing, and deletion interface."""
-    st.title("Lead Management")
-    st.caption("View, update, and manage prospect and customer records.")
-
-    with st.spinner("Loading leads..."):
-        leads, error = get_leads()
-
-    if error:
-        st.error(error)
-        return
-
-    if not leads:
-        st.info("No leads found. Add your first lead from the Add Lead page.")
-        return
-
-    table_rows = [
-        {
-            "Company": lead.get("company_name", ""),
-            "Industry": lead.get("industry", ""),
-            "Contact": lead.get("contact_name", ""),
-            "Email": lead.get("email", ""),
-            "Phone": lead.get("phone", ""),
-            "Status": lead.get("lead_status", ""),
-        }
-        for lead in leads
-    ]
-
-    st.dataframe(
-        pd.DataFrame(table_rows),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    lead_ids = [
-        lead["lead_id"]
-        for lead in leads
-        if isinstance(lead.get("lead_id"), int)
-    ]
-
-    if not lead_ids:
-        st.error("No valid lead IDs were returned by the backend.")
-        return
-
-    selected_lead_id = st.selectbox(
-        "Select a lead",
-        options=lead_ids,
-        format_func=lambda lead_id: next(
-            (
-                f"{lead['company_name']} — {lead['contact_name']}"
-                for lead in leads
-                if lead["lead_id"] == lead_id
-            ),
-            str(lead_id),
-        ),
-    )
-
-    selected_lead = next(
-        lead for lead in leads if lead["lead_id"] == selected_lead_id
-    )
-
-    view_column, update_column, delete_column = st.columns(3)
-
-    with view_column:
-        if st.button("View", use_container_width=True):
-            st.session_state["view_lead_id"] = selected_lead_id
-
-    with update_column:
-        if st.button("Update", use_container_width=True):
-            st.session_state["edit_lead_id"] = selected_lead_id
-
-    with delete_column:
-        if st.button("Delete", type="primary", use_container_width=True):
-            _, delete_error = api_request(
-                "DELETE",
-                f"/leads/{selected_lead_id}",
-            )
-
-            if delete_error:
-                st.error(delete_error)
-            else:
-                st.success("Lead deleted successfully.")
-                st.session_state.pop("view_lead_id", None)
-                st.session_state.pop("edit_lead_id", None)
-                st.rerun()
-
-    if st.session_state.get("view_lead_id") == selected_lead_id:
-        st.subheader("Lead Details")
-        badge_html = status_badge(selected_lead.get("lead_status", ""))
-        st.markdown(
-            f"""
-            <div class="sg-metric-card" style="--accent: var(--cyan)">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">
-                    <div>
-                        <div class="sg-metric-label">Company</div>
-                        <div style="font-family:'Sora',sans-serif; font-weight:700; font-size:1.3rem; color: var(--text) !important;">{selected_lead.get('company_name', '-')}</div>
-                    </div>
-                    {badge_html}
-                </div>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px;">
-                    <div><div class="sg-metric-label">Industry</div><div style="color: var(--text) !important;">{selected_lead.get('industry', '-')}</div></div>
-                    <div><div class="sg-metric-label">Contact</div><div style="color: var(--text) !important;">{selected_lead.get('contact_name', '-')}</div></div>
-                    <div><div class="sg-metric-label">Email</div><div style="color: var(--text) !important;">{selected_lead.get('email', '-')}</div></div>
-                    <div><div class="sg-metric-label">Phone</div><div style="color: var(--text) !important;">{selected_lead.get('phone', '-')}</div></div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    if st.session_state.get("edit_lead_id") == selected_lead_id:
-        st.subheader("Update Lead")
-
-        with st.form(f"update_lead_form_{selected_lead_id}"):
-            company_name = st.text_input(
-                "Company Name",
-                value=selected_lead.get("company_name", ""),
-            )
-            industry = st.text_input(
-                "Industry",
-                value=selected_lead.get("industry", ""),
-            )
-            contact_name = st.text_input(
-                "Contact Name",
-                value=selected_lead.get("contact_name", ""),
-            )
-            email = st.text_input(
-                "Email",
-                value=selected_lead.get("email", ""),
-            )
-            phone = st.text_input(
-                "Phone",
-                value=selected_lead.get("phone", ""),
-            )
-            lead_status = st.text_input(
-                "Lead Status",
-                value=selected_lead.get("lead_status", ""),
-            )
-
-            update_submitted = st.form_submit_button("Save Changes")
-
-        if update_submitted:
-            payload = {
-                "company_name": company_name,
-                "industry": industry,
-                "contact_name": contact_name,
-                "email": email,
-                "phone": phone,
-                "lead_status": lead_status,
-            }
-
-            with st.spinner("Updating lead..."):
-                _, update_error = api_request(
-                    "PUT",
-                    f"/leads/{selected_lead_id}",
-                    payload,
-                )
-
-            if update_error:
-                st.error(update_error)
-            else:
-                st.success("Lead updated successfully.")
-                st.session_state.pop("edit_lead_id", None)
-                st.rerun()
-
-
-def render_add_lead() -> None:
-    """Render the form for creating a new lead."""
-    st.title("Add Lead")
-    st.caption("Create a new prospect or customer record.")
-
-    with st.form("add_lead_form", clear_on_submit=True):
-        company_name = st.text_input("Company Name")
-        industry = st.text_input("Industry")
-        contact_name = st.text_input("Contact Name")
-        email = st.text_input("Email")
-        phone = st.text_input("Phone")
-        lead_status = st.text_input("Lead Status")
-
-        submitted = st.form_submit_button("Save Lead")
-
-    if not submitted:
-        return
-
-    payload = {
-        "company_name": company_name,
-        "industry": industry,
-        "contact_name": contact_name,
-        "email": email,
-        "phone": phone,
-        "lead_status": lead_status,
-    }
-
-    with st.spinner("Saving lead..."):
-        _, error = api_request("POST", "/leads", payload)
-
-    if error:
-        st.error(error)
-    else:
-        st.success("Lead saved successfully.")
-
-
-def render_sales_interactions() -> None:
-    """Render the interaction history and creation interface."""
-    st.title("Sales Interactions")
-    st.caption("View engagement history and add interactions for a lead.")
-
-    with st.spinner("Loading leads..."):
-        leads, error = get_leads()
-
-    if error:
-        st.error(error)
-        return
-
-    if not leads:
-        st.info("Add a lead before recording sales interactions.")
-        return
-
-    lead_ids = [
-        lead["lead_id"]
-        for lead in leads
-        if isinstance(lead.get("lead_id"), int)
-    ]
-
-    selected_lead_id = st.selectbox(
-        "Select Lead",
-        options=lead_ids,
-        format_func=lambda lead_id: next(
-            (
-                f"{lead['company_name']} — {lead['contact_name']}"
-                for lead in leads
-                if lead["lead_id"] == lead_id
-            ),
-            str(lead_id),
-        ),
-    )
-
-    with st.spinner("Loading interaction history..."):
-        interactions, interaction_error = get_interactions(selected_lead_id)
-
-    st.subheader("Interaction History")
-
-    if interaction_error:
-        st.error(interaction_error)
-    elif not interactions:
-        st.info("No interactions recorded for this lead.")
-    else:
-        interaction_table = pd.DataFrame(
-            [
-                {
-                    "Type": interaction.get("interaction_type", ""),
-                    "Summary": interaction.get("summary", ""),
-                    "Action Items": interaction.get("action_items", ""),
-                    "Date": interaction.get("interaction_date", ""),
-                }
-                for interaction in interactions
-            ]
-        )
-        st.dataframe(
-            interaction_table,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-    st.subheader("Add New Interaction")
-
-    with st.form(f"add_interaction_form_{selected_lead_id}", clear_on_submit=True):
-        interaction_type = st.text_input("Interaction Type")
-        summary = st.text_area("Summary")
-        action_items = st.text_area("Action Items")
-        interaction_date = st.date_input("Interaction Date")
-
-        submitted = st.form_submit_button("Save Interaction")
-
-    if not submitted:
-        return
-
-    interaction_timestamp = datetime.combine(
-        interaction_date,
-        time.min,
-        tzinfo=timezone.utc,
-    ).isoformat()
-
-    payload = {
-        "interaction_type": interaction_type,
-        "summary": summary,
-        "action_items": action_items,
-        "interaction_date": interaction_timestamp,
-    }
-
-    with st.spinner("Saving interaction..."):
-        _, save_error = api_request(
-            "POST",
-            f"/leads/{selected_lead_id}/interactions",
-            payload,
-        )
-
-    if save_error:
-        st.error(save_error)
-    else:
-        st.success("Sales interaction saved successfully.")
-        st.rerun()
-
-
-def render_lead_intelligence() -> None:
-    """Render the AI lead analysis interface (Module 2)."""
-    st.title("Lead Intelligence")
-    st.caption("Run AI analysis on a lead to surface business needs, opportunities, and a qualification score.")
-
-    with st.spinner("Loading leads..."):
-        leads, error = get_leads()
-
-    if error:
-        st.error(error)
-        return
-
-    if not leads:
-        st.info("Add a lead before running intelligence analysis.")
-        return
-
-    lead_ids = [
-        lead["lead_id"]
-        for lead in leads
-        if isinstance(lead.get("lead_id"), int)
-    ]
-
-    selected_lead_id = st.selectbox(
-        "Select Lead",
-        options=lead_ids,
-        format_func=lambda lead_id: next(
-            (
-                f"{lead['company_name']} — {lead['industry']}"
-                for lead in leads
-                if lead["lead_id"] == lead_id
-            ),
-            str(lead_id),
-        ),
-    )
-
-    if st.button("Analyze Company", type="primary"):
-        with st.spinner("Running AI analysis..."):
-            _, analyze_error = api_request(
-                "POST", f"/leads/{selected_lead_id}/analyze"
-            )
-        if analyze_error:
-            st.error(analyze_error)
-        else:
-            st.success("Analysis complete.")
-            st.rerun()
-
-    st.subheader("Latest Insight")
-
-    with st.spinner("Loading insights..."):
-        insights, insight_error = get_insights(selected_lead_id)
-
-    if insight_error:
-        st.error(insight_error)
-        return
-
-    if not insights:
-        st.info("No analysis yet for this lead. Click 'Analyze Company' above.")
-        return
-
-    latest = insights[0]
-    score = latest.get("qualification_score", 0)
-    score_color = "emerald" if score >= 70 else "amber" if score >= 40 else "coral"
-
-    st.markdown(
-        f"""
-        <div class="sg-score-wrap">
-            <div>
-                <div class="sg-score-label">Qualification Score</div>
-                <div class="sg-score-number" style="color: var(--{score_color}) !important;">{score}<span style="font-size:1.3rem; color: var(--text-mute) !important;">/100</span></div>
-            </div>
-            <div style="flex:1; height:10px; background-color: var(--surface-2); border-radius:999px; overflow:hidden; border: 1px solid var(--border);">
-                <div style="width:{score}%; height:100%; background: linear-gradient(90deg, var(--cyan), var(--{score_color}));"></div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        f'<div class="sg-insight-block" style="--accent: var(--cyan)">'
-        f'<div class="sg-insight-title">Business Needs</div>'
-        f'<div class="sg-insight-text">{latest.get("business_needs", "-")}</div>'
-        f"</div>"
-        f'<div class="sg-insight-block" style="--accent: var(--emerald)">'
-        f'<div class="sg-insight-title">Opportunities</div>'
-        f'<div class="sg-insight-text">{latest.get("opportunities", "-")}</div>'
-        f"</div>"
-        f'<div class="sg-insight-block" style="--accent: var(--violet)">'
-        f'<div class="sg-insight-title">Industry Analysis</div>'
-        f'<div class="sg-insight-text">{latest.get("industry_analysis", "-")}</div>'
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-
-    if len(insights) > 1:
-        with st.expander(f"View {len(insights) - 1} earlier analysis run(s)"):
-            history_table = pd.DataFrame(
-                [
-                    {
-                        "Score": i.get("qualification_score", ""),
-                        "Business Needs": i.get("business_needs", ""),
-                        "Generated At": i.get("generated_at", ""),
-                    }
-                    for i in insights[1:]
-                ]
-            )
-            st.dataframe(history_table, use_container_width=True, hide_index=True)
-
-
+# --------------------------------------------------------------------------
+# SIDEBAR
+# --------------------------------------------------------------------------
 with st.sidebar:
-    st.title("SalesGenie AI")
-    st.caption("Lead Management Platform")
+    st.markdown('<div class="sg-title">SalesGenie AI</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sg-subtitle">Lead Management Platform</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sg-nav-header">Navigation</div>', unsafe_allow_html=True)
+
     page = st.radio(
-        "Navigation",
+        label="Navigation",
         options=[
             "Dashboard",
             "Lead Management",
             "Add Lead",
             "Lead Intelligence",
+            "AI Outreach",
             "Sales Interactions",
         ],
+        index=1,
+        label_visibility="collapsed",
     )
 
-if page == "Dashboard":
-    render_dashboard()
-elif page == "Lead Management":
+if not backend_alive():
+    st.markdown(
+        '<div class="sg-error-box">Unable to connect to the FastAPI backend. '
+        f'Make sure it is running at <b>{FASTAPI_URL}</b> '
+        '(<code>uvicorn main:app --reload --port 8000</code> or run <code>python run_all.py</code>).</div>',
+        unsafe_allow_html=True,
+    )
+    st.stop()
+
+
+# --------------------------------------------------------------------------
+# MODULE 1 — LEAD MANAGEMENT
+# --------------------------------------------------------------------------
+def render_lead_management():
+    st.markdown('<div class="sg-page-title">Lead Management</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sg-page-subtitle">View, search, edit, and remove prospects.</div>', unsafe_allow_html=True)
+
+    search = st.text_input("Search by company, contact, or industry", placeholder="e.g. TechCorp")
+
+    try:
+        leads = fetch_leads(search or None)
+    except Exception as e:
+        st.error(f"Could not load leads: {e}")
+        return
+
+    if not leads:
+        st.info("No leads found. Add one from the 'Add Lead' page, or run seed_data.py for sample data.")
+        return
+
+    st.caption(f"{len(leads)} lead(s) found")
+    table_rows = [
+        {
+            "Company": l["company_name"],
+            "Contact": l.get("contact_name") or "—",
+            "Industry": l.get("industry") or "—",
+            "Segment": l.get("segment") or "—",
+            "Stage": l.get("lead_status") or "—",
+            "Location": l.get("location") or "—",
+        }
+        for l in leads
+    ]
+    st.dataframe(table_rows, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+    st.subheader("Edit or Delete a Lead")
+
+    label_to_lead = {lead_label(l): l for l in leads}
+    selected_label = st.selectbox("Select a lead", list(label_to_lead.keys()))
+    lead = label_to_lead[selected_label]
+
+    try:
+        stages_resp = api_get("/leads/stages")
+        stages = stages_resp.json()["stages"] if stages_resp.status_code == 200 else \
+            ["New", "Contacted", "Qualified", "Proposal", "Negotiation", "Closed Won", "Closed Lost"]
+    except Exception:
+        stages = ["New", "Contacted", "Qualified", "Proposal", "Negotiation", "Closed Won", "Closed Lost"]
+
+    with st.form(f"edit_lead_{lead['lead_id']}"):
+        c1, c2 = st.columns(2)
+        with c1:
+            company_name = st.text_input("Company Name", value=lead["company_name"])
+            contact_name = st.text_input("Contact Name", value=lead.get("contact_name") or "")
+            title = st.text_input("Title", value=lead.get("title") or "")
+            email = st.text_input("Email", value=lead.get("email") or "")
+            phone = st.text_input("Phone", value=lead.get("phone") or "")
+            industry = st.text_input("Industry", value=lead.get("industry") or "")
+        with c2:
+            company_size = st.text_input("Company Size", value=lead.get("company_size") or "")
+            annual_revenue = st.text_input("Annual Revenue", value=lead.get("annual_revenue") or "")
+            location = st.text_input("Location", value=lead.get("location") or "")
+            funding_stage = st.text_input("Funding Stage", value=lead.get("funding_stage") or "")
+            segment = st.selectbox("Segment", SEGMENTS,
+                                    index=SEGMENTS.index(lead["segment"]) if lead.get("segment") in SEGMENTS else 0)
+            lead_status = st.selectbox("Lead Stage", stages,
+                                        index=stages.index(lead["lead_status"]) if lead.get("lead_status") in stages else 0)
+
+        tech_stack = st.multiselect("Technology Stack", TECH_STACK_OPTIONS, default=lead.get("tech_stack") or [])
+
+        col_save, col_delete = st.columns([1, 1])
+        save_clicked = col_save.form_submit_button("💾 Save Changes", type="primary")
+        delete_clicked = col_delete.form_submit_button("🗑️ Delete Lead")
+
+    if save_clicked:
+        payload = {
+            "company_name": company_name, "contact_name": contact_name, "title": title,
+            "email": email, "phone": phone, "industry": industry, "company_size": company_size,
+            "annual_revenue": annual_revenue, "location": location, "funding_stage": funding_stage,
+            "segment": segment, "lead_status": lead_status, "tech_stack": tech_stack,
+        }
+        resp = api_put(f"/leads/{lead['lead_id']}", json=payload)
+        if resp.status_code == 200:
+            st.markdown('<div class="sg-success-box">Lead updated successfully.</div>', unsafe_allow_html=True)
+            st.rerun()
+        else:
+            st.error(f"Update failed: {resp.text}")
+
+    if delete_clicked:
+        resp = api_delete(f"/leads/{lead['lead_id']}")
+        if resp.status_code == 200:
+            st.markdown('<div class="sg-success-box">Lead deleted.</div>', unsafe_allow_html=True)
+            st.rerun()
+        else:
+            st.error(f"Delete failed: {resp.text}")
+
+    st.markdown("---")
+    st.subheader("Engagement History")
+    try:
+        hist = api_get(f"/leads/{lead['lead_id']}/interactions").json()
+    except Exception:
+        hist = []
+
+    if hist:
+        for h in hist:
+            with st.expander(f"{h['interaction_type']} · {h.get('interaction_date', '')[:10]}"):
+                st.write(h.get("summary") or "No summary.")
+                if h.get("action_items"):
+                    st.caption(f"Action items: {h['action_items']}")
+    else:
+        st.caption("No interactions logged yet.")
+
+    with st.expander("➕ Log a new interaction"):
+        with st.form(f"log_interaction_{lead['lead_id']}"):
+            itype = st.selectbox("Type", ["Call", "Email", "Meeting", "Note"])
+            summary = st.text_area("Summary")
+            action_items = st.text_input("Action items (optional)")
+            logged = st.form_submit_button("Log Interaction")
+        if logged:
+            resp = api_post(f"/leads/{lead['lead_id']}/interactions",
+                             json={"interaction_type": itype, "summary": summary, "action_items": action_items})
+            if resp.status_code == 200:
+                st.success("Interaction logged.")
+                st.rerun()
+            else:
+                st.error(f"Failed: {resp.text}")
+
+
+# --------------------------------------------------------------------------
+# MODULE 1 — ADD LEAD
+# --------------------------------------------------------------------------
+def render_add_lead():
+    st.markdown('<div class="sg-page-title">Add Lead</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sg-page-subtitle">Create a new prospect record.</div>', unsafe_allow_html=True)
+
+    with st.form("add_lead_form", clear_on_submit=True):
+        c1, c2 = st.columns(2)
+        with c1:
+            company_name = st.text_input("Company Name *")
+            contact_name = st.text_input("Contact Name")
+            title = st.text_input("Title")
+            email = st.text_input("Email")
+            phone = st.text_input("Phone")
+            industry = st.text_input("Industry")
+        with c2:
+            company_size = st.text_input("Company Size", placeholder="e.g. 250-500 employees")
+            annual_revenue = st.text_input("Annual Revenue", placeholder="e.g. $45M - $60M")
+            location = st.text_input("Location")
+            funding_stage = st.text_input("Funding Stage", placeholder="e.g. Series C - $28M")
+            segment = st.selectbox("Segment", SEGMENTS)
+            lead_status = st.selectbox("Initial Stage", ["New", "Contacted", "Qualified"])
+
+        tech_stack = st.multiselect("Technology Stack", TECH_STACK_OPTIONS)
+
+        submitted = st.form_submit_button("➕ Add Lead", type="primary")
+
+    if submitted:
+        if not company_name.strip():
+            st.error("Company Name is required.")
+            return
+        payload = {
+            "company_name": company_name, "contact_name": contact_name, "title": title,
+            "email": email, "phone": phone, "industry": industry, "company_size": company_size,
+            "annual_revenue": annual_revenue, "location": location, "funding_stage": funding_stage,
+            "segment": segment, "lead_status": lead_status, "tech_stack": tech_stack,
+        }
+        resp = api_post("/leads", json=payload)
+        if resp.status_code == 200:
+            st.markdown(f'<div class="sg-success-box">Lead "{company_name}" added successfully.</div>',
+                        unsafe_allow_html=True)
+        else:
+            st.error(f"Failed to add lead: {resp.text}")
+
+
+# --------------------------------------------------------------------------
+# MODULE 2 — LEAD INTELLIGENCE
+# --------------------------------------------------------------------------
+def score_gauge(score: int):
+    color = "#22c55e" if score >= 75 else "#eab308" if score >= 45 else "#ef4444"
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=score,
+        number={"font": {"size": 40, "color": "#f5f5f5"}},
+        gauge={
+            "axis": {"range": [0, 100], "tickcolor": "#6b7280"},
+            "bar": {"color": color},
+            "bgcolor": "#161923",
+            "borderwidth": 0,
+            "steps": [
+                {"range": [0, 45], "color": "#2a1a1a"},
+                {"range": [45, 75], "color": "#2a2410"},
+                {"range": [75, 100], "color": "#0f2a1a"},
+            ],
+        },
+    ))
+    fig.update_layout(
+        height=220, margin=dict(l=20, r=20, t=20, b=10),
+        paper_bgcolor="rgba(0,0,0,0)", font={"color": "#f5f5f5"},
+    )
+    return fig
+
+
+def render_lead_intelligence():
+    st.markdown('<div class="sg-page-title">Lead Intelligence</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sg-page-subtitle">AI-powered company analysis and qualification scoring.</div>', unsafe_allow_html=True)
+
+    try:
+        leads = fetch_leads()
+    except Exception as e:
+        st.error(f"Could not load leads: {e}")
+        return
+    if not leads:
+        st.info("No leads yet. Add one from the 'Add Lead' page first.")
+        return
+
+    label_to_lead = {lead_label(l): l for l in leads}
+    selected_label = st.selectbox("Select a lead to analyze", list(label_to_lead.keys()))
+    lead = label_to_lead[selected_label]
+
+    col_profile, col_intel = st.columns([1, 1])
+
+    with col_profile:
+        st.markdown('<div class="sg-card">', unsafe_allow_html=True)
+        st.markdown(f"### {lead['company_name']}")
+        st.caption(f"{lead.get('industry') or 'Unknown industry'} · {lead.get('segment') or 'Unsegmented'}")
+        st.write(f"**Company Size:** {lead.get('company_size') or '—'}")
+        st.write(f"**Annual Revenue:** {lead.get('annual_revenue') or '—'}")
+        st.write(f"**Location:** {lead.get('location') or '—'}")
+        st.write(f"**Funding Stage:** {lead.get('funding_stage') or '—'}")
+        if lead.get("tech_stack"):
+            st.write("**Tech Stack:** " + ", ".join(lead["tech_stack"]))
+        st.write(f"**Pipeline Stage:** {lead.get('lead_status') or '—'}")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col_intel:
+        st.markdown('<span class="sg-badge">AI POWERED</span>', unsafe_allow_html=True)
+        st.write("")
+
+        try:
+            insight_resp = api_get(f"/intelligence/{lead['lead_id']}")
+            insight = insight_resp.json() if insight_resp.status_code == 200 else None
+        except Exception:
+            insight = None
+
+        btn_label = "🔄 Regenerate Insights" if insight else "✨ Generate Lead Intelligence"
+        if st.button(btn_label, type="primary"):
+            with st.spinner("Analyzing company profile..."):
+                gen_resp = api_post(f"/intelligence/generate/{lead['lead_id']}")
+                if gen_resp.status_code == 200:
+                    insight = gen_resp.json()
+                    st.rerun()
+                else:
+                    st.error(f"Generation failed: {gen_resp.json().get('detail', gen_resp.text)}")
+
+        if insight:
+            st.plotly_chart(score_gauge(insight["qualification_score"]), use_container_width=True)
+            st.markdown(f"**{insight['score_label']}**")
+            st.progress(insight["qualification_score"] / 100)
+
+            if insight.get("business_needs"):
+                st.write(f"**Business Needs:** {insight['business_needs']}")
+            if insight.get("opportunities"):
+                st.write(f"**Opportunity:** {insight['opportunities']}")
+            if insight.get("industry_analysis"):
+                st.write(f"**Industry Fit:** {insight['industry_analysis']}")
+
+            if insight.get("reasoning"):
+                st.markdown("---")
+                st.markdown("**Qualification Factors**")
+                for item in insight["reasoning"]:
+                    st.markdown(f'<div class="sg-factor">▸ {item["factor"]}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="sg-factor-detail">{item["detail"]}</div>', unsafe_allow_html=True)
+        else:
+            st.caption("No insights generated yet for this lead. Click the button above.")
+
+
+# --------------------------------------------------------------------------
+# MODULE 3 — AI OUTREACH GENERATION
+# --------------------------------------------------------------------------
+def render_outreach():
+    st.markdown('<div class="sg-page-title">AI Outreach Generation</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="sg-page-subtitle">Generate personalized Cold Emails and Follow-up Emails using AI.</div>',
+        unsafe_allow_html=True,
+    )
+
+    try:
+        leads = fetch_leads()
+    except Exception as e:
+        st.error(f"Could not load leads: {e}")
+        return
+    if not leads:
+        st.warning("No leads found in the database yet. Add some leads first, "
+                    "or run seed_data.py to insert sample leads.")
+        return
+
+    label_to_lead = {lead_label(l): l for l in leads}
+
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        selected_label = st.selectbox("Select Lead", list(label_to_lead.keys()))
+        selected_lead_id = label_to_lead[selected_label]["lead_id"]
+    with col2:
+        email_type = st.selectbox("Email Type", ["cold_email", "follow_up"],
+                                   format_func=lambda x: "Cold Email" if x == "cold_email" else "Follow-up Email")
+
+    col3, col4 = st.columns([1, 1])
+    with col3:
+        tone = st.selectbox("Tone", ["professional", "friendly", "direct", "consultative"])
+    with col4:
+        extra_context = st.text_input("Extra context (optional)", placeholder="e.g. mention their recent funding round")
+
+    if "generated_email" not in st.session_state:
+        st.session_state.generated_email = None
+
+    if st.button("✨ Generate Email", type="primary"):
+        with st.spinner("Generating personalized email..."):
+            try:
+                payload = {
+                    "lead_id": selected_lead_id, "email_type": email_type,
+                    "tone": tone, "extra_context": extra_context or None,
+                }
+                resp = api_post("/outreach/generate", json=payload)
+                if resp.status_code != 200:
+                    st.error(f"Generation failed: {safe_json(resp).get('detail', resp.text)}")
+                else:
+                    st.session_state.generated_email = safe_json(resp)
+            except requests.exceptions.Timeout:
+                st.error("The AI took too long to respond (timed out after 30s). Try again.")
+            except requests.exceptions.ConnectionError:
+                st.error("Lost connection to the backend mid-request. Is it still running?")
+            except Exception as e:
+                st.error(f"Request failed: {e}")
+
+    if st.session_state.generated_email:
+        st.markdown("---")
+        st.subheader("Generated Email")
+        subject = st.text_input("Subject", value=st.session_state.generated_email["subject"])
+        body = st.text_area("Body", value=st.session_state.generated_email["body"], height=220)
+
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("💾 Save as Draft"):
+                _save_campaign(selected_lead_id, email_type, tone, subject, body, "draft")
+        with c2:
+            if st.button("📤 Save & Mark Sent"):
+                _save_campaign(selected_lead_id, email_type, tone, subject, body, "sent")
+
+    st.markdown("---")
+    st.subheader("Outreach History for this Lead")
+    try:
+        history = api_get(f"/outreach/history/{selected_lead_id}").json()
+    except Exception:
+        history = []
+
+    if not history:
+        st.caption("No outreach sent to this lead yet.")
+    else:
+        for c in history:
+            status_emoji = "✅" if c["campaign_status"] == "sent" else "📝"
+            with st.expander(f"{status_emoji} {c['email_subject']}  ·  {c['email_type']}  ·  {c['campaign_status']}"):
+                st.write(c["email_content"])
+
+
+def _save_campaign(lead_id, email_type, tone, subject, body, status):
+    try:
+        payload = {
+            "lead_id": lead_id, "email_type": email_type, "tone": tone,
+            "subject": subject, "body": body, "status": status,
+        }
+        resp = api_post("/outreach/save", json=payload)
+        if resp.status_code == 200:
+            st.markdown(f'<div class="sg-success-box">Saved as {status}.</div>', unsafe_allow_html=True)
+        else:
+            st.error(f"Save failed: {resp.text}")
+    except Exception as e:
+        st.error(f"Save failed: {e}")
+
+
+# --------------------------------------------------------------------------
+# PLACEHOLDER PAGES (Milestones 2-4, not built yet)
+# --------------------------------------------------------------------------
+def render_placeholder(title: str, note: str):
+    st.markdown(f'<div class="sg-page-title">{title}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sg-page-subtitle">{note}</div>', unsafe_allow_html=True)
+    st.info("Not part of Milestone 1's scope (Modules 1-3) — coming in a later milestone.")
+
+
+# --------------------------------------------------------------------------
+# ROUTER
+# --------------------------------------------------------------------------
+if page == "Lead Management":
     render_lead_management()
 elif page == "Add Lead":
     render_add_lead()
 elif page == "Lead Intelligence":
     render_lead_intelligence()
-else:
-    render_sales_interactions()
+elif page == "AI Outreach":
+    render_outreach()
+elif page == "Dashboard":
+    render_placeholder("Dashboard", "Sales analytics dashboard — built in Milestone 4 (Module 6).")
+elif page == "Sales Interactions":
+    render_placeholder("Sales Interactions", "Conversation intelligence & CRM sync — built in Milestone 3 (Module 5).")

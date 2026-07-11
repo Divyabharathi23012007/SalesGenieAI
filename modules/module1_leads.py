@@ -1,255 +1,206 @@
-from __future__ import annotations
+"""
+modules/module1_leads.py
+Module 1 - Lead Management & Prospect Database
 
+Full CRUD for leads (prospects), plus basic engagement-history logging
+(sales_interactions). This is the source of truth all other modules
+(2, 3, 4, 5, 6) read from.
+
+Mounted in main.py as:
+    app.include_router(leads_router, prefix="/leads", tags=["Module 1 - Leads"])
+"""
+
+from typing import Optional, List
 from datetime import datetime
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from database.connection import get_db
 from database.models import Lead, SalesInteraction
 
-router = APIRouter(prefix="/leads", tags=["Lead Management"])
-
-DatabaseSession = Annotated[Session, Depends(get_db)]
+router = APIRouter()
 
 
-class LeadPayload(BaseModel):
-    """Defines the required data for a lead."""
-
-    company_name: str = Field(min_length=1, max_length=255)
-    industry: str = Field(min_length=1, max_length=100)
-    contact_name: str = Field(min_length=1, max_length=255)
-    email: str = Field(
-        min_length=3,
-        max_length=255,
-        pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
-    )
-    phone: str = Field(min_length=1, max_length=20)
-    lead_status: str = Field(min_length=1, max_length=50)
-
-
-class LeadCreate(LeadPayload):
-    """Defines data required to create a lead."""
-
-
-class LeadUpdate(LeadPayload):
-    """Defines data required to update a lead."""
+# --------------------------------------------------------------------------
+# SCHEMAS
+# --------------------------------------------------------------------------
+class LeadCreate(BaseModel):
+    company_name: str
+    industry: Optional[str] = None
+    contact_name: Optional[str] = None
+    title: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    company_size: Optional[str] = None
+    annual_revenue: Optional[str] = None
+    location: Optional[str] = None
+    funding_stage: Optional[str] = None
+    tech_stack: Optional[List[str]] = None
+    lead_status: str = "New"
+    segment: Optional[str] = None  # Enterprise / Mid-Market / Startup
 
 
-class LeadRead(LeadPayload):
-    """Defines the lead response structure."""
+class LeadUpdate(BaseModel):
+    company_name: Optional[str] = None
+    industry: Optional[str] = None
+    contact_name: Optional[str] = None
+    title: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    company_size: Optional[str] = None
+    annual_revenue: Optional[str] = None
+    location: Optional[str] = None
+    funding_stage: Optional[str] = None
+    tech_stack: Optional[List[str]] = None
+    lead_status: Optional[str] = None
+    segment: Optional[str] = None
 
-    model_config = ConfigDict(from_attributes=True)
 
+class LeadOut(BaseModel):
     lead_id: int
-    created_at: datetime
-    updated_at: datetime
+    company_name: str
+    industry: Optional[str] = None
+    contact_name: Optional[str] = None
+    title: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    company_size: Optional[str] = None
+    annual_revenue: Optional[str] = None
+    location: Optional[str] = None
+    funding_stage: Optional[str] = None
+    tech_stack: Optional[List[str]] = None
+    lead_status: Optional[str] = None
+    segment: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
 
-class SalesInteractionPayload(BaseModel):
-    """Defines the required data for a sales interaction."""
-
-    interaction_type: str = Field(min_length=1, max_length=100)
-    summary: str = Field(min_length=1)
-    action_items: str = Field(min_length=1)
-    interaction_date: datetime | None = None
+class InteractionCreate(BaseModel):
+    interaction_type: str  # Call / Email / Meeting / Note
+    summary: Optional[str] = None
+    action_items: Optional[str] = None
 
 
-class SalesInteractionCreate(SalesInteractionPayload):
-    """Defines data required to create a sales interaction."""
-
-
-class SalesInteractionUpdate(SalesInteractionPayload):
-    """Defines data required to update a sales interaction."""
-
-
-class SalesInteractionRead(SalesInteractionPayload):
-    """Defines the sales interaction response structure."""
-
-    model_config = ConfigDict(from_attributes=True)
-
+class InteractionOut(BaseModel):
     interaction_id: int
     lead_id: int
-    interaction_date: datetime
+    interaction_type: str
+    summary: Optional[str] = None
+    action_items: Optional[str] = None
+    interaction_date: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
 
-def get_lead_or_404(lead_id: int, db: Session) -> Lead:
-    """Return a lead or raise a 404 error."""
-    lead = db.get(Lead, lead_id)
-    if lead is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Lead not found.",
-        )
-    return lead
+LEAD_STAGES = ["New", "Contacted", "Qualified", "Proposal", "Negotiation", "Closed Won", "Closed Lost"]
 
 
-def get_interaction_or_404(
-    interaction_id: int,
-    db: Session,
-) -> SalesInteraction:
-    """Return a sales interaction or raise a 404 error."""
-    interaction = db.get(SalesInteraction, interaction_id)
-    if interaction is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Sales interaction not found.",
-        )
-    return interaction
+# --------------------------------------------------------------------------
+# LEAD CRUD ROUTES
+# --------------------------------------------------------------------------
+@router.get("/stages")
+def get_stages():
+    """Lifecycle stages the frontend can render as a dropdown."""
+    return {"stages": LEAD_STAGES}
 
 
-@router.post(
-    "",
-    response_model=LeadRead,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_lead(lead_data: LeadCreate, db: DatabaseSession) -> Lead:
-    """Create and return a new lead."""
-    lead = Lead(**lead_data.model_dump())
+@router.post("", response_model=LeadOut)
+def create_lead(payload: LeadCreate, db: Session = Depends(get_db)):
+    lead = Lead(**payload.model_dump())
     db.add(lead)
-
-    try:
-        db.commit()
-    except IntegrityError as error:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A lead with this email already exists.",
-        ) from error
-
+    db.commit()
     db.refresh(lead)
     return lead
 
 
-@router.get("", response_model=list[LeadRead])
-def get_leads(db: DatabaseSession) -> list[Lead]:
-    """Return all leads."""
-    statement = select(Lead).order_by(Lead.created_at.desc())
-    return list(db.scalars(statement).all())
+@router.get("", response_model=List[LeadOut])
+def list_leads(
+    q: Optional[str] = Query(None, description="Search by company, contact, or industry"),
+    status: Optional[str] = Query(None, description="Filter by lead_status"),
+    segment: Optional[str] = Query(None, description="Filter by segment"),
+    db: Session = Depends(get_db),
+):
+    query = db.query(Lead)
+
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            or_(
+                Lead.company_name.ilike(like),
+                Lead.contact_name.ilike(like),
+                Lead.industry.ilike(like),
+            )
+        )
+    if status:
+        query = query.filter(Lead.lead_status == status)
+    if segment:
+        query = query.filter(Lead.segment == segment)
+
+    return query.order_by(Lead.created_at.desc()).all()
 
 
-@router.get("/{lead_id}", response_model=LeadRead)
-def get_lead(lead_id: int, db: DatabaseSession) -> Lead:
-    """Return a single lead by its ID."""
-    return get_lead_or_404(lead_id, db)
+@router.get("/{lead_id}", response_model=LeadOut)
+def get_lead(lead_id: int, db: Session = Depends(get_db)):
+    lead = db.query(Lead).filter(Lead.lead_id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found.")
+    return lead
 
 
-@router.put("/{lead_id}", response_model=LeadRead)
-def update_lead(
-    lead_id: int,
-    lead_data: LeadUpdate,
-    db: DatabaseSession,
-) -> Lead:
-    """Update and return an existing lead."""
-    lead = get_lead_or_404(lead_id, db)
+@router.put("/{lead_id}", response_model=LeadOut)
+def update_lead(lead_id: int, payload: LeadUpdate, db: Session = Depends(get_db)):
+    lead = db.query(Lead).filter(Lead.lead_id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found.")
 
-    for field_name, value in lead_data.model_dump().items():
-        setattr(lead, field_name, value)
+    updates = payload.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(lead, field, value)
+    lead.updated_at = datetime.utcnow()
 
-    try:
-        db.commit()
-    except IntegrityError as error:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A lead with this email already exists.",
-        ) from error
-
+    db.commit()
     db.refresh(lead)
     return lead
 
 
-@router.delete(
-    "/{lead_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-def delete_lead(lead_id: int, db: DatabaseSession) -> Response:
-    """Delete an existing lead."""
-    lead = get_lead_or_404(lead_id, db)
+@router.delete("/{lead_id}")
+def delete_lead(lead_id: int, db: Session = Depends(get_db)):
+    lead = db.query(Lead).filter(Lead.lead_id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found.")
     db.delete(lead)
     db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return {"message": f"Lead {lead_id} deleted."}
 
 
-@router.post(
-    "/{lead_id}/interactions",
-    response_model=SalesInteractionRead,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_sales_interaction(
-    lead_id: int,
-    interaction_data: SalesInteractionCreate,
-    db: DatabaseSession,
-) -> SalesInteraction:
-    """Create and return a sales interaction for a lead."""
-    get_lead_or_404(lead_id, db)
+# --------------------------------------------------------------------------
+# ENGAGEMENT HISTORY (sales_interactions)
+# --------------------------------------------------------------------------
+@router.post("/{lead_id}/interactions", response_model=InteractionOut)
+def log_interaction(lead_id: int, payload: InteractionCreate, db: Session = Depends(get_db)):
+    lead = db.query(Lead).filter(Lead.lead_id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found.")
 
-    interaction_values = interaction_data.model_dump(exclude_none=True)
-    interaction = SalesInteraction(
-        lead_id=lead_id,
-        **interaction_values,
-    )
+    interaction = SalesInteraction(lead_id=lead_id, **payload.model_dump())
     db.add(interaction)
     db.commit()
     db.refresh(interaction)
     return interaction
 
 
-@router.get(
-    "/{lead_id}/interactions",
-    response_model=list[SalesInteractionRead],
-)
-def get_sales_interactions(
-    lead_id: int,
-    db: DatabaseSession,
-) -> list[SalesInteraction]:
-    """Return all sales interactions for a lead."""
-    get_lead_or_404(lead_id, db)
-
-    statement = (
-        select(SalesInteraction)
-        .where(SalesInteraction.lead_id == lead_id)
+@router.get("/{lead_id}/interactions", response_model=List[InteractionOut])
+def list_interactions(lead_id: int, db: Session = Depends(get_db)):
+    return (
+        db.query(SalesInteraction)
+        .filter(SalesInteraction.lead_id == lead_id)
         .order_by(SalesInteraction.interaction_date.desc())
+        .all()
     )
-    return list(db.scalars(statement).all())
-
-
-@router.put(
-    "/interactions/{interaction_id}",
-    response_model=SalesInteractionRead,
-)
-def update_sales_interaction(
-    interaction_id: int,
-    interaction_data: SalesInteractionUpdate,
-    db: DatabaseSession,
-) -> SalesInteraction:
-    """Update and return an existing sales interaction."""
-    interaction = get_interaction_or_404(interaction_id, db)
-
-    for field_name, value in interaction_data.model_dump(
-        exclude_none=True,
-    ).items():
-        setattr(interaction, field_name, value)
-
-    db.commit()
-    db.refresh(interaction)
-    return interaction
-
-
-@router.delete(
-    "/interactions/{interaction_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-def delete_sales_interaction(
-    interaction_id: int,
-    db: DatabaseSession,
-) -> Response:
-    """Delete an existing sales interaction."""
-    interaction = get_interaction_or_404(interaction_id, db)
-    db.delete(interaction)
-    db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)

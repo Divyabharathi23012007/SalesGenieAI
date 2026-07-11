@@ -1,159 +1,100 @@
-from __future__ import annotations
+"""
+database/models.py
+Shared ORM models for SalesGenie AI.
 
-from datetime import datetime
+NOTE for team: if module1/module2 teammates already created a models.py with
+Lead / CompanyInsight classes, MERGE this file with theirs rather than
+overwriting — keep column names identical so foreign keys line up. This file
+adds OutreachCampaign (new, for Module 3) and includes the others so
+Module 3 can run standalone if needed.
+"""
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
+from sqlalchemy import (
+    Column, Integer, String, Text, TIMESTAMP, ForeignKey, ARRAY, func
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import relationship
 from database.connection import Base
 
 
-class Lead(Base):
-    """Represents a prospect or customer lead."""
+class User(Base):
+    __tablename__ = "users"
 
+    user_id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(150), nullable=False)
+    email = Column(String(150), unique=True, nullable=False)
+    role = Column(String(50))
+    department = Column(String(100))
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+
+class Lead(Base):
     __tablename__ = "leads"
 
-    lead_id: Mapped[int] = mapped_column(
-        primary_key=True,
-        autoincrement=True,
-    )
+    lead_id = Column(Integer, primary_key=True, index=True)
+    company_name = Column(String(200), nullable=False)
+    industry = Column(String(100))
+    contact_name = Column(String(150))
+    title = Column(String(100))
+    email = Column(String(150))
+    phone = Column(String(30))
+    company_size = Column(String(50))
+    annual_revenue = Column(String(50))
+    location = Column(String(150))
+    funding_stage = Column(String(50))
+    tech_stack = Column(ARRAY(String))
+    lead_status = Column(String(50), default="New")
+    segment = Column(String(20))
+    created_by = Column(Integer, ForeignKey("users.user_id"))
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now())
 
-    company_name: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False,
-    )
-
-    industry: Mapped[str] = mapped_column(
-        String(100),
-        nullable=False,
-    )
-
-    contact_name: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False,
-    )
-
-    email: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False,
-        unique=True,
-    )
-
-    phone: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-    )
-
-    lead_status: Mapped[str] = mapped_column(
-        String(50),
-        nullable=False,
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
-
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
-    )
-
-    interactions: Mapped[list["SalesInteraction"]] = relationship(
-        back_populates="lead",
-        cascade="all, delete-orphan",
-    )
-
-    insights: Mapped[list["CompanyInsight"]] = relationship(
-        back_populates="lead",
-        cascade="all, delete-orphan",
-    )
-
-
-class SalesInteraction(Base):
-    """Represents an engagement record associated with a lead."""
-
-    __tablename__ = "sales_interactions"
-
-    interaction_id: Mapped[int] = mapped_column(
-        primary_key=True,
-        autoincrement=True,
-    )
-
-    lead_id: Mapped[int] = mapped_column(
-        ForeignKey("leads.lead_id", ondelete="CASCADE"),
-        nullable=False,
-    )
-
-    interaction_type: Mapped[str] = mapped_column(
-        String(100),
-        nullable=False,
-    )
-
-    summary: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-    )
-
-    action_items: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-    )
-
-    interaction_date: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
-
-    lead: Mapped["Lead"] = relationship(
-        back_populates="interactions",
-    )
+    insights = relationship("CompanyInsight", back_populates="lead")
+    campaigns = relationship("OutreachCampaign", back_populates="lead")
 
 
 class CompanyInsight(Base):
-    """AI-generated lead intelligence produced by Module 2."""
-
     __tablename__ = "company_insights"
 
-    insight_id: Mapped[int] = mapped_column(
-        primary_key=True,
-        autoincrement=True,
-    )
+    insight_id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.lead_id", ondelete="CASCADE"))
+    qualification_score = Column(Integer)
+    score_label = Column(String(50))
+    business_needs = Column(Text)
+    opportunities = Column(Text)
+    industry_analysis = Column(Text)
+    reasoning = Column(JSONB)  # list of {"factor": str, "detail": str}
+    generated_at = Column(TIMESTAMP, server_default=func.now())
 
-    lead_id: Mapped[int] = mapped_column(
-        ForeignKey("leads.lead_id", ondelete="CASCADE"),
-        nullable=False,
-    )
+    lead = relationship("Lead", back_populates="insights")
 
-    business_needs: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-    )
 
-    opportunities: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-    )
+class OutreachCampaign(Base):
+    """
+    New table for Module 3 (matches 'Outreach_Campaigns' in the project's
+    ER diagram: campaign_id PK, lead_id FK, email_subject, email_content,
+    campaign_status, created_at).
+    """
+    __tablename__ = "outreach_campaigns"
 
-    industry_analysis: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-    )
+    campaign_id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.lead_id", ondelete="CASCADE"))
+    email_type = Column(String(30), default="cold_email")  # cold_email | follow_up
+    tone = Column(String(30), default="professional")
+    email_subject = Column(String(255))
+    email_content = Column(Text)
+    campaign_status = Column(String(30), default="draft")  # draft | sent
+    created_at = Column(TIMESTAMP, server_default=func.now())
 
-    qualification_score: Mapped[int] = mapped_column(
-        nullable=False,
-    )
+    lead = relationship("Lead", back_populates="campaigns")
 
-    generated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
 
-    lead: Mapped["Lead"] = relationship(
-        back_populates="insights",
-    )
+class SalesInteraction(Base):
+    __tablename__ = "sales_interactions"
+
+    interaction_id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.lead_id", ondelete="CASCADE"))
+    interaction_type = Column(String(50))
+    summary = Column(Text)
+    action_items = Column(Text)
+    interaction_date = Column(TIMESTAMP, server_default=func.now())
