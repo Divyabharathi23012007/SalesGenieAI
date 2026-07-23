@@ -6,8 +6,10 @@ Run with: streamlit run app.py --server.port 8502
 """
 
 import os
+from collections import Counter
 import requests
 import streamlit as st
+# pyrefly: ignore [missing-import]
 import plotly.graph_objects as go
 from dotenv import load_dotenv
 
@@ -15,247 +17,216 @@ load_dotenv()
 
 FASTAPI_URL = os.getenv("FASTAPI_URL", "http://127.0.0.1:8000")
 
-st.set_page_config(
-    page_title="SalesGenie AI — B2B Sales Intelligence",
-    page_icon="🧬",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="SalesGenie AI", layout="wide", initial_sidebar_state="expanded")
 
+if "theme" not in st.session_state:
+    st.session_state.theme = "dark"
 
-# --------------------------------------------------------------------------
-# DARK THEME STYLING (matches the reference screenshot)
-# --------------------------------------------------------------------------
-st.markdown("""
+theme = st.session_state.theme
+
+colors = {
+    "dark": {
+        "bg": "#0f172a",
+        "fg": "#f8fafc",
+        "muted": "#cbd5e1",
+        "sidebar": "#111827",
+        "border": "#334155",
+        "card": "#111c2f",
+        "widget": "#0b1220",
+        "widget_border": "#475569",
+        "widget_text": "#f8fafc",
+        "accent": "#38bdf8",
+        "accent_2": "#2563eb",
+        "error_bg": "#2a1118",
+        "error_fg": "#fecdd3",
+        "error_border": "#be123c",
+        "success_bg": "#10241d",
+        "success_fg": "#bbf7d0",
+        "success_border": "#16a34a",
+        "badge_bg": "#1d4ed8",
+        "badge_fg": "#dbeafe",
+        "label": "#e2e8f0",
+    },
+    "light": {
+        "bg": "#f8fafc",
+        "fg": "#0f172a",
+        "muted": "#475569",
+        "sidebar": "#ffffff",
+        "border": "#dbe4f0",
+        "card": "#ffffff",
+        "widget": "#f8fbff",
+        "widget_border": "#cbd5e1",
+        "widget_text": "#0f172a",
+        "accent": "#2563eb",
+        "accent_2": "#1d4ed8",
+        "error_bg": "#fef2f2",
+        "error_fg": "#b91c1c",
+        "error_border": "#fecaca",
+        "success_bg": "#f0fdf4",
+        "success_fg": "#166534",
+        "success_border": "#bbf7d0",
+        "badge_bg": "#dbeafe",
+        "badge_fg": "#1d4ed8",
+        "label": "#334155",
+    },
+}
+
+selected = colors[theme]
+
+st.markdown(f"""
 <style>
-    /* ── Google Fonts ── */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
-    /* ── Global Reset ── */
-    html, body, .stApp {
-        font-family: 'Inter', sans-serif;
-        background-color: #060b14;
-        color: #e2e8f0;
-    }
-
-    /* ── Sidebar ── */
-    section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0a0f1e 0%, #0d1321 100%);
-        border-right: 1px solid rgba(99,102,241,0.15);
-    }
-    section[data-testid="stSidebar"] .block-container { padding-top: 1.5rem; }
-
-    /* ── Sidebar Brand ── */
-    .sg-title {
-        font-size: 22px;
-        font-weight: 800;
-        background: linear-gradient(135deg, #818cf8 0%, #38bdf8 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        letter-spacing: -0.5px;
-        margin-bottom: 2px;
-    }
-    .sg-subtitle {
-        font-size: 11px;
-        color: #475569;
-        font-weight: 500;
-        letter-spacing: 1.5px;
-        text-transform: uppercase;
-        margin-bottom: 24px;
-    }
-    .sg-nav-header {
-        font-size: 10px;
-        color: #334155;
-        letter-spacing: 2px;
-        text-transform: uppercase;
-        margin: 20px 0 8px 0;
-        font-weight: 600;
-    }
-
-    /* ── Radio nav items ── */
-    div[data-testid="stRadio"] label {
-        font-size: 14px;
-        font-weight: 500;
-        color: #94a3b8;
-        padding: 6px 0;
-        transition: color 0.2s;
-    }
-    div[data-testid="stRadio"] label:hover { color: #c7d2fe; }
-
-    /* ── Page Headings ── */
-    .sg-page-title {
-        font-size: 36px;
-        font-weight: 800;
-        color: #f1f5f9;
-        letter-spacing: -1px;
-        margin-bottom: 4px;
-        line-height: 1.1;
-    }
-    .sg-page-subtitle {
-        font-size: 14px;
-        color: #64748b;
-        font-weight: 400;
-        margin-bottom: 28px;
-        letter-spacing: 0.1px;
-    }
-
-    /* ── Glassmorphism Card ── */
-    .sg-card {
-        background: rgba(15, 23, 42, 0.85);
-        border: 1px solid rgba(99,102,241,0.18);
-        border-radius: 14px;
-        padding: 22px 24px;
-        margin-bottom: 16px;
-        backdrop-filter: blur(12px);
-        box-shadow: 0 4px 24px rgba(0,0,0,0.4);
-        transition: border-color 0.25s, box-shadow 0.25s;
-    }
-    .sg-card:hover {
-        border-color: rgba(99,102,241,0.38);
-        box-shadow: 0 6px 32px rgba(99,102,241,0.12);
-    }
-
-    /* ── Status / Alert Boxes ── */
-    .sg-error-box {
-        background: rgba(127,29,58,0.25);
-        border: 1px solid rgba(239,68,68,0.4);
-        color: #fca5a5;
-        padding: 14px 18px;
-        border-radius: 10px;
-        font-size: 14px;
-        font-weight: 500;
-    }
-    .sg-success-box {
-        background: rgba(16,84,60,0.25);
-        border: 1px solid rgba(34,197,94,0.35);
-        color: #86efac;
-        padding: 14px 18px;
-        border-radius: 10px;
-        font-size: 14px;
-        font-weight: 500;
-    }
-
-    /* ── Badges ── */
-    .sg-badge {
-        display: inline-block;
-        background: linear-gradient(135deg, rgba(99,102,241,0.25), rgba(56,189,248,0.15));
-        color: #a5b4fc;
-        font-size: 10px;
-        font-weight: 700;
-        padding: 4px 12px;
-        border-radius: 20px;
-        letter-spacing: 1.2px;
-        text-transform: uppercase;
-        border: 1px solid rgba(99,102,241,0.3);
-    }
-
-    /* ── Factor Labels ── */
-    .sg-factor { font-weight: 700; color: #e2e8f0; font-size: 14px; margin-bottom: 2px; }
-    .sg-factor-detail { color: #64748b; font-size: 13px; margin-bottom: 14px; }
-
-    /* ── Buttons ── */
-    .stButton > button {
-        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-        color: #ffffff;
-        border: none;
-        border-radius: 8px;
-        font-weight: 600;
-        font-size: 14px;
-        padding: 10px 20px;
-        letter-spacing: 0.3px;
-        transition: transform 0.15s, box-shadow 0.15s;
-        box-shadow: 0 2px 12px rgba(99,102,241,0.35);
-    }
-    .stButton > button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 20px rgba(99,102,241,0.5);
-        background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
-    }
-    .stButton > button:active { transform: translateY(0px); }
-
-    /* ── Primary Button (type="primary") ── */
-    .stButton > button[kind="primary"] {
-        background: linear-gradient(135deg, #6366f1 0%, #7c3aed 100%);
-        box-shadow: 0 4px 16px rgba(109,40,217,0.4);
-    }
-
-    /* ── Input fields ── */
-    .stTextInput > div > div > input,
-    .stTextArea > div > div > textarea,
-    .stSelectbox > div > div {
-        background-color: #0f172a !important;
-        border: 1px solid rgba(99,102,241,0.2) !important;
-        border-radius: 8px !important;
-        color: #e2e8f0 !important;
-        font-family: 'Inter', sans-serif !important;
-    }
-    .stTextInput > div > div > input:focus,
-    .stTextArea > div > div > textarea:focus {
-        border-color: rgba(99,102,241,0.55) !important;
-        box-shadow: 0 0 0 3px rgba(99,102,241,0.12) !important;
-    }
-
-    /* ── Metrics ── */
-    div[data-testid="stMetric"] {
-        background: rgba(15,23,42,0.8);
-        border: 1px solid rgba(99,102,241,0.15);
-        border-radius: 12px;
-        padding: 16px 20px;
-    }
-    div[data-testid="stMetricValue"] {
-        font-size: 28px !important;
-        font-weight: 800 !important;
-        color: #a5b4fc !important;
-    }
-    div[data-testid="stMetricLabel"] { color: #64748b !important; font-size: 12px !important; font-weight: 600 !important; text-transform: uppercase; letter-spacing: 0.8px; }
-
-    /* ── Tabs ── */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 4px;
-        background: rgba(15,23,42,0.6);
-        padding: 4px;
-        border-radius: 10px;
-        border: 1px solid rgba(99,102,241,0.12);
-    }
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 7px;
-        font-weight: 600;
-        font-size: 13px;
-        color: #64748b;
-        padding: 8px 18px;
-    }
-    .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #6366f1, #4f46e5) !important;
-        color: #ffffff !important;
-    }
-
-    /* ── Expander ── */
-    details summary {
-        background: rgba(15,23,42,0.7);
-        border: 1px solid rgba(99,102,241,0.15);
-        border-radius: 8px;
-        padding: 10px 14px;
-        font-weight: 500;
-        color: #94a3b8;
-        cursor: pointer;
-    }
-    details[open] summary {
-        border-color: rgba(99,102,241,0.4);
-        color: #c7d2fe;
-    }
-
-    /* ── Dataframe ── */
-    .stDataFrame { border-radius: 10px; overflow: hidden; border: 1px solid rgba(99,102,241,0.15); }
-
-    /* ── Divider ── */
-    hr { border-color: rgba(99,102,241,0.12); margin: 20px 0; }
-
-    /* ── Scrollbar ── */
-    ::-webkit-scrollbar { width: 5px; height: 5px; }
-    ::-webkit-scrollbar-track { background: #060b14; }
-    ::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.4); border-radius: 10px; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0.7); }
+    :root {{
+        --bg: {selected['bg']};
+        --fg: {selected['fg']};
+        --muted: {selected['muted']};
+        --sidebar: {selected['sidebar']};
+        --border: {selected['border']};
+        --card: {selected['card']};
+        --widget: {selected['widget']};
+        --widget-border: {selected['widget_border']};
+        --widget-text: {selected['widget_text']};
+        --accent: {selected['accent']};
+        --accent-2: {selected['accent_2']};
+        --error-bg: {selected['error_bg']};
+        --error-fg: {selected['error_fg']};
+        --error-border: {selected['error_border']};
+        --success-bg: {selected['success_bg']};
+        --success-fg: {selected['success_fg']};
+        --success-border: {selected['success_border']};
+        --badge-bg: {selected['badge_bg']};
+        --badge-fg: {selected['badge_fg']};
+        --label: {selected['label']};
+    }}
+    * {{ color: var(--fg); }}
+    body, .stApp {{ background-color: var(--bg); color: var(--fg); }}
+    section[data-testid="stSidebar"] {{
+        background-color: var(--sidebar);
+        border-right: 1px solid var(--border);
+    }}
+    /* Navigation & Labels */
+    label {{ color: var(--label) !important; font-weight: 500; }}
+    .stRadio label {{ color: var(--fg) !important; }}
+    .stCheckbox label {{ color: var(--fg) !important; }}
+    
+    /* Sidebar elements */
+    .sg-title {{ font-size: 28px; font-weight: 800; color: var(--accent); margin-bottom: 0px; }}
+    .sg-subtitle {{ font-size: 13px; color: var(--muted); margin-top: 0px; margin-bottom: 24px; }}
+    .sg-nav-header {{
+        font-size: 12px; color: var(--muted); letter-spacing: 1px;
+        text-transform: uppercase; margin: 18px 0 6px 0; font-weight: 600;
+    }}
+    
+    /* Page headers */
+    .sg-page-title {{ font-size: 42px; font-weight: 800; color: var(--fg); margin-bottom: 4px; }}
+    .sg-page-subtitle {{ font-size: 15px; color: var(--muted); margin-bottom: 28px; }}
+    
+    /* Alerts & Messages */
+    .sg-error-box {{
+        background-color: var(--error-bg); border: 1px solid var(--error-border); color: var(--error-fg);
+        padding: 16px 20px; border-radius: 8px; font-size: 15px;
+    }}
+    .sg-success-box {{
+        background-color: var(--success-bg); border: 1px solid var(--success-border); color: var(--success-fg);
+        padding: 14px 18px; border-radius: 8px; font-size: 14px;
+    }}
+    
+    /* Cards & Containers */
+    .sg-card {{
+        background-color: var(--card); border: 1px solid var(--border); border-radius: 14px;
+        padding: 20px; margin-bottom: 16px; color: var(--fg);
+        box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+    }}
+    .sg-badge {{
+        display: inline-block; background-color: var(--badge-bg); color: var(--badge-fg);
+        font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 12px;
+        letter-spacing: 0.5px;
+    }}
+    .sg-hero {{
+        background: linear-gradient(135deg, #2563eb 0%, #7c3aed 55%, #ec4899 100%);
+        color: white; padding: 24px 28px; border-radius: 18px; margin-bottom: 20px;
+        box-shadow: 0 10px 24px rgba(37, 99, 235, 0.2);
+    }}
+    .sg-hero-title {{ font-size: 28px; font-weight: 800; margin-bottom: 6px; }}
+    .sg-hero-subtitle {{ font-size: 15px; opacity: 0.95; }}
+    .sg-pill {{
+        display: inline-block; background: rgba(255,255,255,0.2); padding: 6px 12px;
+        border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: 0.5px;
+        margin-bottom: 8px;
+    }}
+    .stMetric {{ background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px; }}
+    
+    /* Qualification factors */
+    .sg-factor {{ font-weight: 700; color: var(--fg); font-size: 14px; margin-bottom: 2px; }}
+    .sg-factor-detail {{ color: var(--muted); font-size: 13px; margin-bottom: 14px; }}
+    
+    /* Form inputs - comprehensive styling */
+    input[type="text"],
+    input[type="number"],
+    input[type="email"],
+    input[type="password"],
+    textarea,
+    select {{
+        background-color: var(--widget) !important;
+        color: var(--widget-text) !important;
+        border: 1px solid var(--widget-border) !important;
+        padding: 8px 12px !important;
+        border-radius: 6px !important;
+    }}
+    input[type="text"]::placeholder,
+    textarea::placeholder {{
+        color: var(--muted) !important;
+    }}
+    
+    /* Streamlit components */
+    .stTextInput>div>div>input,
+    .stNumberInput>div>div>input,
+    .stTextArea>div>div>textarea {{
+        background-color: var(--widget) !important;
+        color: var(--widget-text) !important;
+        border: 1px solid var(--widget-border) !important;
+    }}
+    .stSelectbox>div>div>div,
+    .stMultiSelect>div>div>div {{
+        background-color: var(--widget) !important;
+        border: 1px solid var(--widget-border) !important;
+    }}
+    .stSelectbox [data-testid="selectbox-popper"],
+    .stMultiSelect [data-testid="multiselect-popper"] {{
+        background-color: var(--card) !important;
+    }}
+    
+    /* Radio buttons */
+    div[data-testid="stRadio"] label {{ 
+        font-size: 15px; padding: 4px 0; color: var(--fg) !important; 
+    }}
+    div[data-testid="stRadio"] {{ color: var(--fg) !important; }}
+    
+    /* Buttons */
+    .stButton>button {{
+        background-color: var(--accent-2); color: white; border: none; border-radius: 6px;
+        font-weight: 600; padding: 8px 24px;
+    }}
+    .stButton>button:hover {{ background-color: var(--accent); }}
+    
+    /* Dataframe */
+    .stDataFrame {{ background-color: transparent; }}
+    [data-testid="stDataFrame"] {{ background-color: var(--card); }}
+    
+    /* Dividers */
+    hr {{ border-color: var(--border); }}
+    
+    /* Captions & help text */
+    .stCaption, .stHelp {{ color: var(--muted) !important; }}
+    
+    /* Expanders */
+    .streamlit-expanderHeader {{ color: var(--fg) !important; }}
+    
+    /* Subheaders */
+    h1, h2, h3, h4, h5, h6 {{ color: var(--fg) !important; }}
+    
+    /* Tabs */
+    .stTabs [data-testid="stTab"] {{ color: var(--muted); }}
+    .stTabs [aria-selected="true"] {{ color: var(--accent) !important; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -293,37 +264,6 @@ def safe_json(resp):
     except ValueError:
         return {"detail": resp.text.strip() or f"Empty response (HTTP {resp.status_code})"}
 
-
-def score_gauge(total_score: int):
-    """Returns a Plotly gauge indicator for the given total score (0-100)."""
-    color = "#10b981" if total_score >= 70 else "#f59e0b" if total_score >= 40 else "#ef4444"
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=total_score,
-        number={"suffix": "/100", "font": {"size": 28, "color": "#f5f5f5"}},
-        gauge={
-            "axis": {"range": [0, 100], "tickcolor": "#9ca3af", "tickfont": {"color": "#9ca3af"}},
-            "bar": {"color": color},
-            "bgcolor": "#1f2937",
-            "bordercolor": "#374151",
-            "steps": [
-                {"range": [0, 40], "color": "#1f2937"},
-                {"range": [40, 70], "color": "#1f2937"},
-                {"range": [70, 100], "color": "#1f2937"},
-            ],
-            "threshold": {"line": {"color": color, "width": 3}, "thickness": 0.75, "value": total_score},
-        },
-        title={"text": "Prospect Fit Score", "font": {"size": 16, "color": "#9ca3af"}},
-    ))
-    fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#f5f5f5"),
-        margin=dict(t=40, b=10, l=20, r=20),
-        height=230,
-    )
-    return fig
-
-
 def fetch_leads(q: str = None):
     params = {"q": q} if q else {}
     resp = api_get("/leads", params=params)
@@ -334,6 +274,10 @@ def fetch_leads(q: str = None):
 def lead_label(l: dict) -> str:
     seg = f" · {l['segment']}" if l.get("segment") else ""
     return f"{l['company_name']} — {l.get('contact_name') or 'No contact'}{seg}"
+
+
+def fmt_money(v) -> str:
+    return f"${v:,}" if v else "—"
 
 
 TECH_STACK_OPTIONS = [
@@ -349,6 +293,18 @@ SEGMENTS = ["Enterprise", "Mid-Market", "Startup"]
 with st.sidebar:
     st.markdown('<div class="sg-title">SalesGenie AI</div>', unsafe_allow_html=True)
     st.markdown('<div class="sg-subtitle">Lead Management Platform</div>', unsafe_allow_html=True)
+
+    theme_toggle = st.radio(
+        "Theme",
+        ["dark", "light"],
+        horizontal=True,
+        index=0 if st.session_state.theme == "dark" else 1,
+        label_visibility="visible",
+    )
+    if theme_toggle != st.session_state.theme:
+        st.session_state.theme = theme_toggle
+        st.rerun()
+
     st.markdown('<div class="sg-nav-header">Navigation</div>', unsafe_allow_html=True)
 
     page = st.radio(
@@ -358,9 +314,9 @@ with st.sidebar:
             "Lead Management",
             "Add Lead",
             "Lead Intelligence",
-            "Lead Scoring",
             "AI Outreach",
-            "Sales Interactions",
+            "Lead Scoring",
+            "Conversations",
         ],
         index=1,
         label_visibility="collapsed",
@@ -403,6 +359,7 @@ def render_lead_management():
             "Industry": l.get("industry") or "—",
             "Segment": l.get("segment") or "—",
             "Stage": l.get("lead_status") or "—",
+            "Deal Value": f"${l['deal_value']:,}" if l.get("deal_value") else "—",
             "Location": l.get("location") or "—",
         }
         for l in leads
@@ -435,6 +392,8 @@ def render_lead_management():
         with c2:
             company_size = st.text_input("Company Size", value=lead.get("company_size") or "")
             annual_revenue = st.text_input("Annual Revenue", value=lead.get("annual_revenue") or "")
+            deal_value = st.number_input("Est. Deal Value ($)", min_value=0, step=5000,
+                                          value=int(lead.get("deal_value") or 0))
             location = st.text_input("Location", value=lead.get("location") or "")
             funding_stage = st.text_input("Funding Stage", value=lead.get("funding_stage") or "")
             segment = st.selectbox("Segment", SEGMENTS,
@@ -454,6 +413,7 @@ def render_lead_management():
             "email": email, "phone": phone, "industry": industry, "company_size": company_size,
             "annual_revenue": annual_revenue, "location": location, "funding_stage": funding_stage,
             "segment": segment, "lead_status": lead_status, "tech_stack": tech_stack,
+            "deal_value": int(deal_value) if deal_value else None,
         }
         resp = api_put(f"/leads/{lead['lead_id']}", json=payload)
         if resp.status_code == 200:
@@ -521,6 +481,7 @@ def render_add_lead():
         with c2:
             company_size = st.text_input("Company Size", placeholder="e.g. 250-500 employees")
             annual_revenue = st.text_input("Annual Revenue", placeholder="e.g. $45M - $60M")
+            deal_value = st.number_input("Est. Deal Value ($)", min_value=0, step=5000, value=0)
             location = st.text_input("Location")
             funding_stage = st.text_input("Funding Stage", placeholder="e.g. Series C - $28M")
             segment = st.selectbox("Segment", SEGMENTS)
@@ -539,6 +500,7 @@ def render_add_lead():
             "email": email, "phone": phone, "industry": industry, "company_size": company_size,
             "annual_revenue": annual_revenue, "location": location, "funding_stage": funding_stage,
             "segment": segment, "lead_status": lead_status, "tech_stack": tech_stack,
+            "deal_value": int(deal_value) if deal_value else None,
         }
         resp = api_post("/leads", json=payload)
         if resp.status_code == 200:
@@ -551,27 +513,41 @@ def render_add_lead():
 # --------------------------------------------------------------------------
 # MODULE 2 — LEAD INTELLIGENCE
 # --------------------------------------------------------------------------
-def score_gauge(score: int):
+def score_gauge(score: int, theme_name: str = None):
+    theme_name = theme_name or st.session_state.get("theme", "dark")
+    is_light = theme_name == "light"
+
     color = "#22c55e" if score >= 75 else "#eab308" if score >= 45 else "#ef4444"
+    text_color = "#0f172a" if is_light else "#f8fafc"
+    background_color = "#ffffff" if is_light else "#111c2f"
+    axis_color = "#64748b" if is_light else "#94a3b8"
+    step_colors = [
+        ("#fee2e2", "#fda4af") if is_light else ("#2a1a1a", "#7f1d1d"),
+        ("#fef3c7", "#f59e0b") if is_light else ("#2a2410", "#a16207"),
+        ("#dcfce7", "#22c55e") if is_light else ("#0f2a1a", "#15803d"),
+    ]
+
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=score,
-        number={"font": {"size": 40, "color": "#f5f5f5"}},
+        number={"font": {"size": 40, "color": text_color}},
         gauge={
-            "axis": {"range": [0, 100], "tickcolor": "#6b7280"},
+            "axis": {"range": [0, 100], "tickcolor": axis_color, "tickfont": {"color": text_color}},
             "bar": {"color": color},
-            "bgcolor": "#161923",
+            "bgcolor": background_color,
             "borderwidth": 0,
             "steps": [
-                {"range": [0, 45], "color": "#2a1a1a"},
-                {"range": [45, 75], "color": "#2a2410"},
-                {"range": [75, 100], "color": "#0f2a1a"},
+                {"range": [0, 45], "color": step_colors[0][0]},
+                {"range": [45, 75], "color": step_colors[1][0]},
+                {"range": [75, 100], "color": step_colors[2][0]},
             ],
         },
     ))
     fig.update_layout(
-        height=220, margin=dict(l=20, r=20, t=20, b=10),
-        paper_bgcolor="rgba(0,0,0,0)", font={"color": "#f5f5f5"},
+        height=220,
+        margin=dict(l=20, r=20, t=20, b=10),
+        paper_bgcolor="rgba(0,0,0,0)",
+        font={"color": text_color},
     )
     return fig
 
@@ -606,6 +582,7 @@ def render_lead_intelligence():
         if lead.get("tech_stack"):
             st.write("**Tech Stack:** " + ", ".join(lead["tech_stack"]))
         st.write(f"**Pipeline Stage:** {lead.get('lead_status') or '—'}")
+        st.write(f"**Est. Deal Value:** {fmt_money(lead.get('deal_value'))}")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_intel:
@@ -629,7 +606,7 @@ def render_lead_intelligence():
                     st.error(f"Generation failed: {gen_resp.json().get('detail', gen_resp.text)}")
 
         if insight:
-            st.plotly_chart(score_gauge(insight["qualification_score"]), use_container_width=True)
+            st.plotly_chart(score_gauge(insight["qualification_score"], theme_name=theme), use_container_width=True)
             st.markdown(f"**{insight['score_label']}**")
             st.progress(insight["qualification_score"] / 100)
 
@@ -648,6 +625,176 @@ def render_lead_intelligence():
                     st.markdown(f'<div class="sg-factor-detail">{item["detail"]}</div>', unsafe_allow_html=True)
         else:
             st.caption("No insights generated yet for this lead. Click the button above.")
+
+
+# --------------------------------------------------------------------------
+# MODULE 4 — LEAD SCORING & RECOMMENDATIONS
+# --------------------------------------------------------------------------
+def render_lead_scoring():
+    st.markdown('<div class="sg-page-title">Lead Scoring & Recommendations</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sg-page-subtitle">Rank prospects and run simulated What-If analyses.</div>', unsafe_allow_html=True)
+
+    tab_rank, tab_score, tab_sim = st.tabs([
+        "🏆 Priority Rankings",
+        "📊 Score & AI Recommendations",
+        "🧪 What-If Simulator"
+    ])
+
+    with tab_rank:
+        st.subheader("Lead Priority Pipeline")
+        try:
+            rankings = api_get("/scoring/ranking/list").json()
+        except Exception as e:
+            st.error(f"Could not load rankings: {e}")
+            rankings = []
+        
+        if rankings:
+            table_rows = [
+                {
+                    "Company": r["company_name"],
+                    "Score": r["score"],
+                    "Classification": r["classification"],
+                    "Industry": r.get("industry") or "—",
+                    "Status": r.get("lead_status") or "—",
+                }
+                for r in rankings
+            ]
+            st.dataframe(table_rows, use_container_width=True, hide_index=True)
+        else:
+            st.info("No scores available. Recalculate scoring for a lead under the 'Score & AI Recommendations' tab.")
+
+    with tab_score:
+        try:
+            leads = fetch_leads()
+        except Exception as e:
+            st.error(f"Could not load leads: {e}")
+            return
+        if not leads:
+            st.warning("No leads found. Add some leads first.")
+            return
+
+        label_to_lead = {lead_label(l): l for l in leads}
+        selected_label = st.selectbox("Select Lead to Score", list(label_to_lead.keys()), key="score_lead_select")
+        lead = label_to_lead[selected_label]
+        lead_id = lead["lead_id"]
+
+        col_profile, col_score = st.columns([1, 1])
+
+        with col_profile:
+            st.markdown('<div class="sg-card">', unsafe_allow_html=True)
+            st.markdown(f"### {lead['company_name']}")
+            st.caption(f"{lead.get('industry') or 'Unknown industry'} · {lead.get('segment') or 'Unsegmented'}")
+            st.write(f"**Company Size:** {lead.get('company_size') or '—'}")
+            st.write(f"**Annual Revenue:** {lead.get('annual_revenue') or '—'}")
+            st.write(f"**Location:** {lead.get('location') or '—'}")
+            st.write(f"**Funding Stage:** {lead.get('funding_stage') or '—'}")
+            if lead.get("tech_stack"):
+                st.write("**Tech Stack:** " + ", ".join(lead["tech_stack"]))
+            st.write(f"**Pipeline Stage:** {lead.get('lead_status') or '—'}")
+            st.write(f"**Est. Deal Value:** {fmt_money(lead.get('deal_value'))}")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        with col_score:
+            try:
+                score_resp = api_get(f"/scoring/{lead_id}")
+                score_data = score_resp.json() if score_resp.status_code == 200 else None
+            except Exception:
+                score_data = None
+
+            btn_label = "🔄 Recalculate Score" if score_data else "✨ Calculate Lead Score"
+            if st.button(btn_label, type="primary", key="calc_score_btn"):
+                with st.spinner("Calculating score and generating recommendations..."):
+                    gen_resp = api_post(f"/scoring/generate/{lead_id}")
+                    if gen_resp.status_code == 200:
+                        st.success("Lead score generated successfully!")
+                        st.rerun()
+                    else:
+                        st.error(f"Generation failed: {gen_resp.text}")
+
+            if score_data:
+                st.plotly_chart(score_gauge(score_data["score"], theme_name=theme), use_container_width=True, key=f"score_gauge_{lead_id}")
+                st.markdown(f"**Priority Level:** `{score_data['classification']}`")
+                
+                conf = score_data.get("confidence_score", 0)
+                st.markdown(f"**Data Confidence Score:** {conf}%")
+                st.progress(conf / 100)
+
+                st.markdown("---")
+                st.markdown("**Scoring Breakdown**")
+                explanation = score_data.get("explanation", {})
+                for factor, points in explanation.items():
+                    st.write(f"**{factor}:** {points} pts")
+
+                st.markdown("---")
+                st.markdown("**AI Recommendations & Next Steps**")
+                st.markdown(score_data.get("recommendations", "No recommendations found."))
+            else:
+                st.caption("No score generated yet. Click the button above.")
+
+    with tab_sim:
+        st.subheader("What-If Score Simulator")
+        st.caption("Adjust the parameters below to see how they impact the lead score in real time. This will not modify the database.")
+        
+        sim_label_to_lead = {lead_label(l): l for l in leads}
+        sim_selected_label = st.selectbox("Select Lead to Simulate", list(sim_label_to_lead.keys()), key="sim_lead_select")
+        sim_lead = sim_label_to_lead[sim_selected_label]
+        sim_lead_id = sim_lead["lead_id"]
+
+        with st.form("what_if_simulator_form"):
+            c1, c2 = st.columns(2)
+            with c1:
+                comp_size = st.text_input("Company Size", value=sim_lead.get("company_size") or "")
+                ann_rev = st.text_input("Annual Revenue", value=sim_lead.get("annual_revenue") or "")
+                funding = st.text_input("Funding Stage", value=sim_lead.get("funding_stage") or "")
+                industry = st.text_input("Industry", value=sim_lead.get("industry") or "")
+                
+                hiring_trend = st.selectbox("Hiring Trend", ["Stable", "Growing", "Declining"])
+                website_eng = st.selectbox("Website Engagement", ["Low", "Medium", "High"])
+
+            with c2:
+                email_open = st.selectbox("Email Open Rate", ["No Outreach", "Sent but Not Opened", "Opened"])
+                email_reply = st.selectbox("Email Reply Status", ["No Reply", "Replied"])
+                linkedin_eng = st.selectbox("LinkedIn Engagement", ["No Engagement", "Engaged"])
+                recent_news = st.selectbox("Recent News", ["No News", "Positive News"])
+                demo_booked = st.checkbox("Demo/Meeting Booked", value=False)
+
+            run_sim = st.form_submit_button("🧪 Run Simulation", type="primary")
+
+        if run_sim:
+            payload = {
+                "lead_id": sim_lead_id,
+                "company_size": comp_size or None,
+                "annual_revenue": ann_rev or None,
+                "funding_stage": funding or None,
+                "industry": industry or None,
+                "hiring_trend": hiring_trend,
+                "website_engagement": website_eng,
+                "email_open_rate": email_open,
+                "email_reply": email_reply,
+                "linkedin_engagement": linkedin_eng,
+                "recent_news": recent_news,
+                "demo_booked": demo_booked
+            }
+            with st.spinner("Simulating..."):
+                sim_resp = api_post("/scoring/simulate", json=payload)
+                if sim_resp.status_code == 200:
+                    sim_data = sim_resp.json()
+                    st.success("Simulation Complete!")
+                    
+                    sc1, sc2 = st.columns([1, 1])
+                    with sc1:
+                        st.plotly_chart(score_gauge(sim_data["score"], theme_name=theme), use_container_width=True, key=f"sim_gauge_{sim_lead_id}")
+                        st.markdown(f"**Simulated Classification:** `{sim_data['classification']}`")
+                        st.markdown(f"**Simulated Data Confidence:** {sim_data.get('confidence_score', 0)}%")
+                    with sc2:
+                        st.markdown("**Simulated Scoring Explanation**")
+                        for factor, points in sim_data.get("explanation", {}).items():
+                            st.write(f"**{factor}:** {points} pts")
+                        st.markdown("---")
+                        st.markdown("**Simulated AI recommendations**")
+                        st.markdown(sim_data.get("recommendations", ""))
+                else:
+                    st.error(f"Simulation failed: {sim_resp.text}")
 
 
 # --------------------------------------------------------------------------
@@ -754,86 +901,158 @@ def _save_campaign(lead_id, email_type, tone, subject, body, status):
 
 
 # --------------------------------------------------------------------------
-# MODULE 4 — LEAD SCORING UI
+# MODULE 6 — DASHBOARD & SALES ANALYTICS
 # --------------------------------------------------------------------------
-def render_lead_scoring():
-    st.markdown('<div class="sg-page-title">Lead Scoring & Playbooks</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sg-page-subtitle">Calculate prospect fit scores and AI engagement playbooks.</div>', unsafe_allow_html=True)
+PRIORITY_COLORS = {"High": "#7f1d3a", "Medium": "#7a5b12", "Low": "#1e3a5f"}
+PRIORITY_TEXT = {"High": "#fca5a5", "Medium": "#fcd34d", "Low": "#7dd3fc"}
+CLASS_COLORS = {
+    "Platinum": ("#3a2f6b", "#c4b5fd"),
+    "Gold": ("#7a5b12", "#fcd34d"),
+    "Silver": ("#3a3f4b", "#d1d5db"),
+    "Bronze": ("#5c3a1e", "#fdba74"),
+    "Low Priority": ("#262730", "#9ca3af"),
+}
+
+
+def badge(text: str, bg: str, fg: str) -> str:
+    return (f'<span style="display:inline-block;background-color:{bg};color:{fg};'
+            f'font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px;'
+            f'letter-spacing:0.5px;">{text}</span>')
+
+
+def build_stage_chart(pipeline):
+    stages = pipeline.get("stages", [])
+    counts = [len(pipeline.get("columns", {}).get(stage, [])) for stage in stages]
+    colors = ["#60a5fa", "#34d399", "#f59e0b", "#f472b6", "#a78bfa", "#fb7185", "#2dd4bf"]
+    fig = go.Figure(data=[go.Bar(x=stages, y=counts, marker_color=colors[:len(stages)])])
+    fig.update_layout(
+        title="Leads by Sales Stage",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=10, t=40, b=10),
+        height=280,
+        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=True, gridcolor="rgba(148,163,184,0.2)"),
+    )
+    return fig
+
+
+def build_segment_chart(leads):
+    counts = Counter((lead.get("segment") or "Unspecified") for lead in leads)
+    labels = list(counts.keys())
+    values = list(counts.values())
+    fig = go.Figure(data=[go.Pie(labels=labels, values=values, hole=0.45, marker_colors=["#60a5fa", "#34d399", "#f59e0b", "#f472b6", "#a78bfa"])])
+    fig.update_layout(
+        title="Lead Mix by Segment",
+        paper_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=10, t=40, b=10),
+        height=280,
+    )
+    return fig
+
+
+def render_dashboard():
+    st.markdown('<div class="sg-page-title">Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sg-page-subtitle">Sales pipeline, conversion, and follow-up recommendations across all leads.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sg-hero"><div class="sg-pill">LIVE SALES INSIGHTS</div><div class="sg-hero-title">Turn your pipeline into a colorful, actionable view.</div><div class="sg-hero-subtitle">Monitor momentum, spot hot accounts, and keep the team aligned with live charts and recommendations.</div></div>', unsafe_allow_html=True)
+
+    try:
+        overview = api_get("/dashboard/overview").json()
+    except Exception as e:
+        st.error(f"Could not load dashboard: {e}")
+        return
 
     try:
         leads = fetch_leads()
+    except Exception:
+        leads = []
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Leads", overview["total_leads"])
+    c2.metric("Conversion Rate", f"{overview['conversion_rate']}%")
+    c3.metric("Open Pipeline Value", fmt_money(overview["pipeline_value"]))
+    c4.metric("Avg Lead Score", overview["avg_lead_score"] if overview["avg_lead_score"] is not None else "—")
+
+    c5, c6, c7, c8 = st.columns(4)
+    c5.metric("Avg Qualification Score", overview["avg_qualification_score"] if overview["avg_qualification_score"] is not None else "—")
+    c6.metric("Campaigns Sent", overview["campaigns_sent"])
+    c7.metric("Campaigns Drafted", overview["campaigns_draft"])
+    c8.metric("Interactions Logged", overview["interactions_logged"])
+
+    st.markdown("---")
+    try:
+        pipeline = api_get("/dashboard/pipeline").json()
     except Exception as e:
-        st.error(f"Could not load leads: {e}")
-        return
-    if not leads:
-        st.info("No leads yet. Add one from the 'Add Lead' page first.")
-        return
+        st.error(f"Could not load pipeline: {e}")
+        pipeline = None
 
-    label_to_lead = {lead_label(l): l for l in leads}
-    selected_label = st.selectbox("Select a lead to score", list(label_to_lead.keys()))
-    lead = label_to_lead[selected_label]
-
-    col_details, col_score = st.columns([1, 1])
-
-    with col_details:
+    chart_col1, chart_col2 = st.columns([1.1, 0.9])
+    with chart_col1:
         st.markdown('<div class="sg-card">', unsafe_allow_html=True)
-        st.markdown(f"### {lead['company_name']}")
-        st.caption(f"{lead.get('industry') or 'Unknown industry'} · {lead.get('segment') or 'Unsegmented'}")
-        st.write(f"**Company Size:** {lead.get('company_size') or '—'}")
-        st.write(f"**Annual Revenue:** {lead.get('annual_revenue') or '—'}")
-        st.write(f"**Location:** {lead.get('location') or '—'}")
-        if lead.get("tech_stack"):
-            st.write("**Tech Stack:** " + ", ".join(lead["tech_stack"]))
-        st.write(f"**Pipeline Stage:** {lead.get('lead_status') or '—'}")
+        if pipeline:
+            st.plotly_chart(build_stage_chart(pipeline), use_container_width=True)
+        else:
+            st.caption("Pipeline chart unavailable")
+        st.markdown('</div>', unsafe_allow_html=True)
+    with chart_col2:
+        st.markdown('<div class="sg-card">', unsafe_allow_html=True)
+        st.plotly_chart(build_segment_chart(leads), use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    with col_score:
-        st.markdown('<span class="sg-badge">QUALIFICATION ENGINE</span>', unsafe_allow_html=True)
-        st.write("")
+    st.markdown("---")
+    st.subheader("Sales Pipeline")
 
-        try:
-            score_resp = api_get(f"/scoring/{lead['lead_id']}")
-            score_data = score_resp.json() if score_resp.status_code == 200 else None
-        except Exception:
-            score_data = None
+    if pipeline:
+        cols = st.columns(len(pipeline["stages"]))
+        for col, stage in zip(cols, pipeline["stages"]):
+            leads_in_stage = pipeline["columns"][stage]
+            with col:
+                st.markdown(f"**{stage}**")
+                st.caption(f"{len(leads_in_stage)} lead(s)")
+                for l in leads_in_stage:
+                    cls = l.get("classification")
+                    bg, fg = CLASS_COLORS.get(cls, ("#262730", "#9ca3af"))
+                    cls_badge = badge(cls, bg, fg) if cls else ""
+                    st.markdown(
+                        f'<div class="sg-card" style="padding:12px;margin-bottom:10px;">'
+                        f'<div style="font-weight:700;font-size:13px;">{l["company_name"]}</div>'
+                        f'<div style="color:#9ca3af;font-size:12px;margin:4px 0;">{fmt_money(l.get("deal_value"))}</div>'
+                        f'{cls_badge}'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
-        btn_label = "🔄 Recalculate Fit Score" if score_data else "✨ Compute Fit Score"
-        if st.button(btn_label, type="primary"):
-            with st.spinner("Calculating lead score..."):
-                gen_resp = api_post(f"/scoring/calculate/{lead['lead_id']}")
-                if gen_resp.status_code == 200:
-                    score_data = gen_resp.json()
-                    st.rerun()
-                else:
-                    st.error(f"Scoring failed: {gen_resp.text}")
+    st.markdown("---")
+    st.subheader("Automated Follow-Up Recommendations")
+    try:
+        followups = api_get("/dashboard/followups").json()
+    except Exception as e:
+        st.error(f"Could not load follow-ups: {e}")
+        followups = []
 
-        if score_data:
-            st.plotly_chart(score_gauge(score_data["total_score"]), use_container_width=True)
-            st.markdown(f"**Strategy Recommendation**: `{score_data['recommended_strategy']}`")
-            
-            c1, c2 = st.columns(2)
-            with c1:
-                st.metric("Demographic Fit Score", f"{score_data['demographic_score']}/50")
-                st.progress(score_data['demographic_score'] / 50.0)
-            with c2:
-                st.metric("Behavioral Engagement Score", f"{score_data['behavioral_score']}/50")
-                st.progress(score_data['behavioral_score'] / 50.0)
-
-            if score_data.get("engagement_playbook"):
-                st.markdown("---")
-                st.markdown("**AI Engagement Playbook**")
-                for step in score_data["engagement_playbook"]:
-                    st.write(step)
-        else:
-            st.caption("No scoring data calculated yet for this lead.")
+    if not followups:
+        st.info("No follow-ups flagged right now — score more leads under Lead Scoring to populate this feed.")
+    for f in followups:
+        bg = PRIORITY_COLORS.get(f["priority"], "#262730")
+        fg = PRIORITY_TEXT.get(f["priority"], "#9ca3af")
+        st.markdown(
+            f'<div class="sg-card" style="display:flex;justify-content:space-between;align-items:center;">'
+            f'<div>'
+            f'<div style="font-weight:700;">{f["company_name"]} <span style="color:#6b7280;font-weight:400;">· {f.get("lead_status") or "—"}</span></div>'
+            f'<div style="color:#9ca3af;font-size:13px;margin-top:4px;">{f["reason"]}</div>'
+            f'</div>'
+            f'{badge(f["priority"] + " Priority", bg, fg)}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
 
 # --------------------------------------------------------------------------
-# MODULE 5 — CONVERSATION INTELLIGENCE & CRM SYNC UI
+# MODULE 5 — CONVERSATION INTELLIGENCE & CRM INTEGRATION
 # --------------------------------------------------------------------------
-def render_sales_interactions():
-    st.markdown('<div class="sg-page-title">Conversation Intelligence & CRM Sync</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sg-page-subtitle">Transcribe, summarize meetings, and synchronize leads with Salesforce & HubSpot.</div>', unsafe_allow_html=True)
+def render_conversations():
+    st.markdown('<div class="sg-page-title">Conversations</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sg-page-subtitle">CRM sync status and AI-powered meeting/call summarization.</div>', unsafe_allow_html=True)
 
     try:
         leads = fetch_leads()
@@ -841,193 +1060,120 @@ def render_sales_interactions():
         st.error(f"Could not load leads: {e}")
         return
     if not leads:
-        st.info("No leads yet. Add one from the 'Add Lead' page first.")
+        st.warning("No leads found. Add some leads first.")
         return
 
     label_to_lead = {lead_label(l): l for l in leads}
-    selected_label = st.selectbox("Select target lead for logs & CRM sync", list(label_to_lead.keys()))
+    selected_label = st.selectbox("Select Lead", list(label_to_lead.keys()), key="conv_lead_select")
     lead = label_to_lead[selected_label]
+    lead_id = lead["lead_id"]
 
-    # Tabs for different operations
-    tab1, tab2, tab3 = st.tabs(["📝 Log & Summarize Call", "📜 Interaction History", "🔄 CRM Sync Gateway"])
+    tab_crm, tab_summary, tab_activity = st.tabs(["🔄 CRM Sync Status", "🧠 Meeting Summary (AI Powered)", "📋 Recent Activity"])
 
-    with tab1:
-        st.markdown("### Paste Meeting/Call Transcript")
-        st.caption("Pasting raw meeting transcripts (Zoom/Teams exports) automatically extracts summaries, key action points, and customer sentiment.")
-        
-        sample_transcript = (
-            "Agent: Hi, this is Sarah from SalesGenie. Thanks for joining.\n"
-            "Client: Hi Sarah. We are currently looking for a B2B lead intelligence tool that supports custom API connections and tracks technology stacks. We run React and python on AWS.\n"
-            "Agent: That fits perfectly. We support fully custom integrations. How many seats are you looking to start with?\n"
-            "Client: We want to onboard about 40 users next month. But first we need a pricing quote and to see a copy of your SOC2 security report to check compatibility.\n"
-            "Agent: Absolutely, I will email you the custom pricing and the SOC2 document by Tuesday. Let's schedule a deep-dive product demo for next Friday at 10 AM.\n"
-            "Client: Perfect, that works for us. Thanks!"
-        )
-        
-        transcript_input = st.text_area(
-            "Call Transcript Details",
-            value=sample_transcript,
-            height=200,
-            help="Paste the transcription text here."
-        )
-
-        if st.button("✨ Summarize & Log Interaction", type="primary"):
-            with st.spinner("Extracting insights..."):
-                payload = {"lead_id": lead["lead_id"], "transcript": transcript_input}
-                resp = api_post("/conversation/summarize", json=payload)
+    with tab_crm:
+        st.markdown('<div class="sg-card">', unsafe_allow_html=True)
+        st.markdown(f"**{lead['company_name']}** — sync this lead's current profile to a CRM platform.")
+        st.caption("Simulated integration: no live Salesforce/HubSpot credentials are configured for this "
+                   "project, so this logs the same sync record a real integration would produce.")
+        platform = st.selectbox("CRM Platform", ["Salesforce", "HubSpot"], key="crm_platform_select")
+        if st.button("Sync Now", key="crm_sync_btn"):
+            try:
+                resp = api_post(f"/conversation/sync/{lead_id}", json={"crm_platform": platform})
                 if resp.status_code == 200:
-                    data = resp.json()
-                    st.success("Successfully summarized call and logged to database!")
-                    
-                    # Display Extracted Summary
-                    st.markdown("#### Summary Details")
-                    st.write(data["summary"])
-                    
-                    st.markdown("#### Extracted Sentiment")
-                    sentiment = data["sentiment"]
-                    s_color = "green" if sentiment == "Positive" else "orange" if sentiment == "Neutral" else "red"
-                    st.markdown(f'<span style="background-color: {s_color}; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;">{sentiment}</span>', unsafe_allow_html=True)
-                    
-                    st.markdown("#### Action Items Checklist")
-                    st.write(data["action_items"])
+                    log = resp.json()
+                    st.markdown(f'<div class="sg-success-box">Synced to {log["crm_platform"]} at {log["timestamp"]}.</div>', unsafe_allow_html=True)
                 else:
-                    st.error(f"Summarizer failed: {resp.text}")
+                    st.markdown(f'<div class="sg-error-box">{safe_json(resp).get("detail", resp.text)}</div>', unsafe_allow_html=True)
+            except Exception as e:
+                st.markdown(f'<div class="sg-error-box">Sync failed: {e}</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    with tab2:
-        st.markdown("### Past Interactions Log")
+        st.markdown("**Sync History**")
         try:
-            interact_resp = api_get(f"/leads/interactions/{lead['lead_id']}")
-            interactions = interact_resp.json() if interact_resp.status_code == 200 else []
-        except Exception:
-            interactions = []
-
-        if not interactions:
-            st.caption("No interactions logged for this lead yet.")
-        else:
-            for idx, inter in enumerate(interactions):
-                idate = inter.get("interaction_date", "")[:10]
-                with st.expander(f"📞 Meeting/Call on {idate} — Lead ID {inter['lead_id']}"):
-                    st.markdown("**Summary**")
-                    st.write(inter.get("summary"))
-                    st.markdown("**Action Items / Notes**")
-                    st.write(inter.get("action_items"))
-
-    with tab3:
-        st.markdown("### CRM Synchronization Gateway")
-        st.caption("Push lead demographics, enrichment parameters, and recent AI logs to HubSpot/Salesforce.")
-        
-        provider = st.selectbox("CRM Provider Target", ["HubSpot", "Salesforce", "Microsoft Dynamics"])
-        
-        if st.button(f"Sync lead to {provider}", type="primary"):
-            with st.spinner(f"Initiating handshake with {provider} APIs..."):
-                resp = api_post(f"/conversation/sync-crm/{lead['lead_id']}?provider={provider}")
-                if resp.status_code == 200:
-                    data = resp.json()
-                    st.markdown('<div class="sg-success-box">Lead synchronisation completed successfully.</div>', unsafe_allow_html=True)
-                    st.write(f"**Synchronised at:** {data['synced_at']}")
-                    st.write(f"**Sync Status:** `{data['sync_status']}`")
-                    st.json(data["payload_sent"])
-                else:
-                    st.error(f"Sync failed: {resp.text}")
-
-
-# --------------------------------------------------------------------------
-# MODULE 6 — DASHBOARD UI
-# --------------------------------------------------------------------------
-def render_dashboard():
-    st.markdown('<div class="sg-page-title">Executive Pipeline Dashboard</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sg-page-subtitle">Real-time overview of qualification metrics, segments, and pipeline stages.</div>', unsafe_allow_html=True)
-
-    try:
-        resp = api_get("/dashboard/metrics")
-        if resp.status_code != 200:
-            st.error("Failed to load dashboard metrics from backend API.")
-            return
-        metrics = resp.json()
-    except Exception as e:
-        st.error(f"Backend offline or connection error: {e}")
-        return
-
-    # 1. KPI Metrics
-    kpi1, kpi2, kpi3 = st.columns(3)
-    with kpi1:
-        st.metric("Total Active Prospects", metrics["total_leads"])
-    with kpi2:
-        st.metric("Avg. Qualification Score", f"{metrics['average_lead_score']}/100")
-    with kpi3:
-        segments = metrics["segment_metrics"]
-        top_seg = max(segments, key=segments.get) if segments else "N/A"
-        st.metric("Dominant Segment", top_seg)
-
-    st.write("")
-
-    # 2. Charts
-    col_chart1, col_chart2 = st.columns(2)
-    
-    with col_chart1:
-        st.markdown("### Segment Distribution")
-        seg_data = metrics["segment_metrics"]
-        if not seg_data:
-            st.caption("No segment data available.")
-        else:
-            fig_pie = go.Figure(data=[go.Pie(
-                labels=list(seg_data.keys()),
-                values=list(seg_data.values()),
-                hole=0.4,
-                marker=dict(colors=["#6366f1", "#10b981", "#f59e0b", "#ec4899"])
-            )])
-            fig_pie.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#f5f5f5"),
-                showlegend=True,
-                margin=dict(t=10, b=10, l=10, r=10),
-                height=250
+            logs = api_get(f"/conversation/sync/logs/{lead_id}").json()
+        except Exception as e:
+            st.error(f"Could not load sync history: {e}")
+            logs = []
+        if logs:
+            st.dataframe(
+                [{"Platform": l["crm_platform"], "Status": l["sync_status"],
+                  "Detail": l.get("detail") or "—", "Timestamp": l["timestamp"]} for l in logs],
+                use_container_width=True, hide_index=True,
             )
-            st.plotly_chart(fig_pie, use_container_width=True)
-
-    with col_chart2:
-        st.markdown("### Pipeline Stages")
-        stage_data = metrics["stage_metrics"]
-        if not stage_data:
-            st.caption("No pipeline stage data available.")
         else:
-            fig_bar = go.Figure(data=[go.Bar(
-                x=list(stage_data.keys()),
-                y=list(stage_data.values()),
-                marker_color="#6366f1"
-            )])
-            fig_bar.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#f5f5f5"),
-                margin=dict(t=10, b=10, l=10, r=10),
-                height=250,
-                xaxis=dict(gridcolor="#374151"),
-                yaxis=dict(gridcolor="#374151")
+            st.caption("No sync history yet for this lead.")
+
+    with tab_summary:
+        st.markdown('<div class="sg-card">', unsafe_allow_html=True)
+        interaction_type = st.radio("Type", ["Call", "Meeting"], horizontal=True, key="conv_type_radio")
+        transcript = st.text_area(
+            "Paste the call/meeting transcript",
+            height=180,
+            placeholder="Rep: Hi Sarah, thanks for joining...\nSarah: We're looking for better data pipeline monitoring...",
+            key="conv_transcript_input",
+        )
+        if st.button("Generate Summary", key="conv_summarize_btn"):
+            if not transcript.strip():
+                st.warning("Paste a transcript first.")
+            else:
+                with st.spinner("Summarizing with AI..."):
+                    try:
+                        resp = api_post("/conversation/summarize", json={
+                            "lead_id": lead_id, "transcript": transcript, "interaction_type": interaction_type,
+                        })
+                        if resp.status_code == 200:
+                            st.session_state["last_summary"] = resp.json()
+                            st.markdown('<div class="sg-success-box">Summary generated.</div>', unsafe_allow_html=True)
+                        else:
+                            st.markdown(f'<div class="sg-error-box">{safe_json(resp).get("detail", resp.text)}</div>', unsafe_allow_html=True)
+                    except Exception as e:
+                        st.markdown(f'<div class="sg-error-box">Summarization failed: {e}</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        summary = st.session_state.get("last_summary")
+        if summary and summary.get("lead_id") == lead_id:
+            st.markdown('<div class="sg-card">', unsafe_allow_html=True)
+            st.markdown(f'<span class="sg-badge">AI POWERED</span>', unsafe_allow_html=True)
+            st.markdown(f"**{summary['interaction_type']} Summary**")
+            st.write(summary.get("summary") or "—")
+            st.markdown("**Action Items**")
+            items = (summary.get("action_items") or "").split(" | ")
+            for item in items:
+                if item.strip():
+                    st.markdown(f"- {item.strip()}")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        st.markdown("**Past AI Summaries for this Lead**")
+        try:
+            summaries = api_get(f"/conversation/summaries/{lead_id}").json()
+        except Exception as e:
+            st.error(f"Could not load past summaries: {e}")
+            summaries = []
+        if summaries:
+            for s in summaries:
+                with st.expander(f"{s['interaction_type']} — {s['interaction_date']}"):
+                    st.write(s.get("summary") or "—")
+                    st.caption(s.get("action_items") or "No action items recorded.")
+        else:
+            st.caption("No AI summaries generated yet for this lead.")
+
+    with tab_activity:
+        st.markdown("**Recent CRM Sync Activity (all leads)**")
+        try:
+            recent = api_get("/conversation/sync/logs").json()
+        except Exception as e:
+            st.error(f"Could not load recent activity: {e}")
+            recent = []
+        if recent:
+            lead_names = {l["lead_id"]: l["company_name"] for l in leads}
+            st.dataframe(
+                [{"Company": lead_names.get(r["lead_id"], f"Lead #{r['lead_id']}"),
+                  "Platform": r["crm_platform"], "Status": r["sync_status"],
+                  "Timestamp": r["timestamp"]} for r in recent],
+                use_container_width=True, hide_index=True,
             )
-            st.plotly_chart(fig_bar, use_container_width=True)
-
-    # 3. Top Prospects Table
-    st.markdown("### Top Scored Prospects")
-    top_prospects = metrics["top_prospects"]
-    if not top_prospects:
-        st.caption("No lead scores calculated yet. Go to 'Lead Scoring' to calculate scores.")
-    else:
-        import pandas as pd
-        df = pd.DataFrame(top_prospects)
-        # Clean columns for display
-        df.columns = ["Lead ID", "Company Name", "Contact Name", "Segment", "Fit Score", "Recommended Strategy"]
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
-
-# --------------------------------------------------------------------------
-# PLACEHOLDER PAGES (Milestones 2-4, not built yet)
-# --------------------------------------------------------------------------
-def render_placeholder(title: str, note: str):
-    st.markdown(f'<div class="sg-page-title">{title}</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="sg-page-subtitle">{note}</div>', unsafe_allow_html=True)
-    st.info("Not part of Milestone 1's scope (Modules 1-3) — coming in a later milestone.")
+        else:
+            st.caption("No sync activity yet across any lead.")
 
 
 # --------------------------------------------------------------------------
@@ -1039,14 +1185,11 @@ elif page == "Add Lead":
     render_add_lead()
 elif page == "Lead Intelligence":
     render_lead_intelligence()
-elif page == "Lead Scoring":
-    render_lead_scoring()
 elif page == "AI Outreach":
     render_outreach()
+elif page == "Lead Scoring":
+    render_lead_scoring()
 elif page == "Dashboard":
     render_dashboard()
-elif page == "Sales Interactions":
-    render_sales_interactions()
-
-
-
+elif page == "Conversations":
+    render_conversations()
