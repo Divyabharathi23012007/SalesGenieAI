@@ -2,11 +2,6 @@
 database/models.py
 Shared ORM models for SalesGenie AI.
 
-NOTE for team: if module1/module2 teammates already created a models.py with
-Lead / CompanyInsight classes, MERGE this file with theirs rather than
-overwriting — keep column names identical so foreign keys line up. This file
-adds OutreachCampaign (new, for Module 3) and includes the others so
-Module 3 can run standalone if needed.
 """
 
 from sqlalchemy import (
@@ -45,13 +40,15 @@ class Lead(Base):
     tech_stack = Column(ARRAY(String))
     lead_status = Column(String(50), default="New")
     segment = Column(String(20))
+    deal_value = Column(Integer)  # estimated deal size in USD, powers Module 6's pipeline value KPI
     created_by = Column(Integer, ForeignKey("users.user_id"))
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now())
 
     insights = relationship("CompanyInsight", back_populates="lead")
     campaigns = relationship("OutreachCampaign", back_populates="lead")
-    scores = relationship("LeadScore", back_populates="lead")
+    score_record = relationship("LeadScore", back_populates="lead", uselist=False, cascade="all, delete-orphan")
+    sync_logs = relationship("CRMSyncLog", back_populates="lead", cascade="all, delete-orphan")
 
 
 class CompanyInsight(Base):
@@ -90,21 +87,6 @@ class OutreachCampaign(Base):
     lead = relationship("Lead", back_populates="campaigns")
 
 
-class LeadScore(Base):
-    __tablename__ = "lead_scores"
-
-    score_id = Column(Integer, primary_key=True, index=True)
-    lead_id = Column(Integer, ForeignKey("leads.lead_id", ondelete="CASCADE"))
-    demographic_score = Column(Integer, default=0)
-    behavioral_score = Column(Integer, default=0)
-    total_score = Column(Integer, default=0)
-    recommended_strategy = Column(String(255))
-    engagement_playbook = Column(JSONB)  # List of dicts or strings representing action items
-    calculated_at = Column(TIMESTAMP, server_default=func.now())
-
-    lead = relationship("Lead", back_populates="scores")
-
-
 class SalesInteraction(Base):
     __tablename__ = "sales_interactions"
 
@@ -113,4 +95,43 @@ class SalesInteraction(Base):
     interaction_type = Column(String(50))
     summary = Column(Text)
     action_items = Column(Text)
+    ai_generated = Column(Integer, default=0)  # 0/1 flag: set to 1 when created by Module 5's AI summarizer
     interaction_date = Column(TIMESTAMP, server_default=func.now())
+
+
+class CRMSyncLog(Base):
+    """
+    Module 5 - Conversation Intelligence & CRM Integration.
+    Matches 'CRM_Sync_Logs' in the project's ER diagram: sync_id PK, lead_id FK,
+    crm_platform, sync_status, timestamp.
+
+    NOTE: this project does not hold real Salesforce/HubSpot credentials, so a
+    "sync" here simulates pushing the lead's current profile to the chosen CRM
+    platform and logs the result — the same audit trail a real integration would
+    produce, without an actual outbound API call.
+    """
+    __tablename__ = "crm_sync_logs"
+
+    sync_id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.lead_id", ondelete="CASCADE"))
+    crm_platform = Column(String(30), nullable=False)  # Salesforce | HubSpot
+    sync_status = Column(String(30), default="Synced")  # Synced | Failed
+    detail = Column(Text)
+    timestamp = Column(TIMESTAMP, server_default=func.now())
+
+    lead = relationship("Lead", back_populates="sync_logs")
+
+
+class LeadScore(Base):
+    __tablename__ = "lead_scores"
+
+    score_id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.lead_id", ondelete="CASCADE"), unique=True)
+    score = Column(Integer, nullable=False)
+    classification = Column(String(50), nullable=False)
+    explanation = Column(JSONB, nullable=False)  # JSON detailing points per feature
+    recommendations = Column(Text, nullable=False)  # markdown AI recommendations
+    confidence_score = Column(Integer, nullable=False)
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    lead = relationship("Lead", back_populates="score_record")
