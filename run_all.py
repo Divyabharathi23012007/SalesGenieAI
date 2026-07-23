@@ -15,14 +15,27 @@ STREAMLIT_PORT = os.getenv("STREAMLIT_PORT", "8502")
 
 
 def main():
+    # Detect local virtual environment python
+    python_exe = sys.executable
+    if os.name == "nt":
+        venv_python = os.path.join("venv", "Scripts", "python.exe")
+    else:
+        venv_python = os.path.join("venv", "bin", "python")
+
+    if os.path.exists(venv_python):
+        python_exe = venv_python
+        print(f"[run_all] Using virtual environment python: {python_exe}")
+    else:
+        print(f"[run_all] Using system python: {python_exe}")
+
     backend = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "main:app", "--reload", "--port", FASTAPI_PORT]
+        [python_exe, "-m", "uvicorn", "main:app", "--reload", "--port", FASTAPI_PORT]
     )
     print(f"[run_all] FastAPI backend starting on http://127.0.0.1:{FASTAPI_PORT}")
     time.sleep(2)  # give the backend a moment to bind before the frontend tries to call it
 
     frontend = subprocess.Popen(
-        [sys.executable, "-m", "streamlit", "run", "app.py", "--server.port", STREAMLIT_PORT]
+        [python_exe, "-m", "streamlit", "run", "app.py", "--server.port", STREAMLIT_PORT]
     )
     print(f"[run_all] Streamlit frontend starting on http://127.0.0.1:{STREAMLIT_PORT}")
 
