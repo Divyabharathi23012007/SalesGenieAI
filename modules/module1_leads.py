@@ -41,6 +41,7 @@ class LeadCreate(BaseModel):
     tech_stack: Optional[List[str]] = None
     lead_status: str = "New"
     segment: Optional[str] = None  # Enterprise / Mid-Market / Startup
+    deal_value: Optional[int] = None  # estimated deal size in USD
 
 
 class LeadUpdate(BaseModel):
@@ -57,6 +58,7 @@ class LeadUpdate(BaseModel):
     tech_stack: Optional[List[str]] = None
     lead_status: Optional[str] = None
     segment: Optional[str] = None
+    deal_value: Optional[int] = None
 
 
 class LeadOut(BaseModel):
@@ -74,6 +76,7 @@ class LeadOut(BaseModel):
     tech_stack: Optional[List[str]] = None
     lead_status: Optional[str] = None
     segment: Optional[str] = None
+    deal_value: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
